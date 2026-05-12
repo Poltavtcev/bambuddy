@@ -1449,6 +1449,7 @@ export default {
       searchBase: '検索ベースDN',
       userFilter: 'ユーザー検索フィルター',
       userFilterHint: '{username}はログインユーザー名に置き換えられます。OpenLDAPの場合は(uid={username})を使用。',
+      advanced: '詳細設定',
       autoProvision: 'ユーザー自動作成',
       autoProvisionHint: '初回LDAPログイン時にBamBuddyアカウントを自動作成',
       defaultGroup: 'デフォルトグループ',

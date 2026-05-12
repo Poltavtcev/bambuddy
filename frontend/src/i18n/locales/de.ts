@@ -1450,6 +1450,7 @@ export default {
       searchBase: 'Such-Basis-DN',
       userFilter: 'Benutzer-Suchfilter',
       userFilterHint: '{username} wird durch den Anmeldenamen ersetzt. Verwenden Sie (uid={username}) für OpenLDAP.',
+      advanced: 'Erweitert',
       autoProvision: 'Benutzer automatisch anlegen',
       autoProvisionHint: 'Automatisch ein BamBuddy-Konto bei der ersten LDAP-Anmeldung erstellen',
       defaultGroup: 'Standardgruppe',

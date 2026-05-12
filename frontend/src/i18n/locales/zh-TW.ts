@@ -1451,6 +1451,7 @@ export default {
       searchBase: '搜尋基礎 DN',
       userFilter: '使用者搜尋過濾器',
       userFilterHint: '{username} 替換為登入使用者名稱。OpenLDAP 使用 (uid={username})。',
+      advanced: '進階',
       autoProvision: '自動建立使用者',
       autoProvisionHint: '首次 LDAP 登入時自動建立 BamBuddy 帳戶',
       defaultGroup: '預設群組',

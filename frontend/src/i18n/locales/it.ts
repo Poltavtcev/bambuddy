@@ -1407,6 +1407,7 @@ export default {
       searchBase: 'Base DN di ricerca',
       userFilter: 'Filtro di ricerca utente',
       userFilterHint: '{username} viene sostituito con il nome utente. Usa (uid={username}) per OpenLDAP.',
+      advanced: 'Avanzate',
       autoProvision: 'Provisioning automatico utenti',
       autoProvisionHint: 'Crea automaticamente un account BamBuddy al primo accesso LDAP',
       defaultGroup: 'Gruppo predefinito',
