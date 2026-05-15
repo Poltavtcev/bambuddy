@@ -202,6 +202,7 @@ export function SettingsPage() {
     can_control_printer: false,
     can_read_status: true,
     can_access_cloud: false,
+    can_update_energy_cost: false,
   });
   const [createdAPIKey, setCreatedAPIKey] = useState<string | null>(null);
   const [showDeleteAPIKeyConfirm, setShowDeleteAPIKeyConfirm] = useState<number | null>(null);
@@ -3741,6 +3742,18 @@ export function SettingsPage() {
                           <p className="text-xs text-bambu-gray">{t('settings.cloudAccessDescription', 'Read Bambu Cloud presets and filaments on your behalf. Requires you to be signed into Bambu Cloud.')}</p>
                         </div>
                       </label>
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={newAPIKeyPermissions.can_update_energy_cost}
+                          onChange={(e) => setNewAPIKeyPermissions(prev => ({ ...prev, can_update_energy_cost: e.target.checked }))}
+                          className="w-4 h-4 text-bambu-green rounded border-bambu-dark-tertiary bg-bambu-dark focus:ring-bambu-green"
+                        />
+                        <div>
+                          <span className="text-white">{t('settings.updateEnergyCost')}</span>
+                          <p className="text-xs text-bambu-gray">{t('settings.updateEnergyCostDescription')}</p>
+                        </div>
+                      </label>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 pt-2">
@@ -3800,6 +3813,9 @@ export function SettingsPage() {
                             )}
                             {key.can_access_cloud && (
                               <span className="px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded">{t('settings.cloudBadge', 'Cloud')}</span>
+                            )}
+                            {key.can_update_energy_cost && (
+                              <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded">{t('settings.energyCostBadge')}</span>
                             )}
                             {key.user_id === null && (
                               <span

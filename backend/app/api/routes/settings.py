@@ -7,10 +7,11 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.core.auth import RequirePermissionIfAuthEnabled, caller_is_api_key
+from backend.app.core.auth import RequirePermissionIfAuthEnabled, caller_is_api_key, require_energy_cost_update
 from backend.app.core.config import settings as app_settings
 from backend.app.core.database import get_db
 from backend.app.core.permissions import Permission
@@ -255,6 +256,40 @@ async def patch_settings(
 ):
     """Partially update application settings (same as PUT, for REST compatibility)."""
     return await update_settings(settings_update, db, _)
+
+
+class ElectricityPriceUpdate(BaseModel):
+    """Payload for ``POST /settings/electricity-price`` (#1356).
+
+    Mirrors the field name documented in ``wiki/features/energy.md`` so the
+    Home Assistant ``rest_command`` example needs only a URL change, not a
+    payload change. Plain non-negative float; tariffs can go as low as 0.0 in
+    some markets (e.g. free hours).
+    """
+
+    energy_cost_per_kwh: float = Field(ge=0)
+
+
+@router.post("/electricity-price", response_model=AppSettings)
+async def update_electricity_price(
+    payload: ElectricityPriceUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User | None = Depends(require_energy_cost_update()),
+    _is_api_key: bool = Depends(caller_is_api_key),
+):
+    """Update the per-kWh electricity cost used by the energy-tracking pipeline.
+
+    This is the only settings field writable via API key, gated by the
+    ``can_update_energy_cost`` toggle on the key. JWT users still need the
+    standard ``SETTINGS_UPDATE`` permission. See #1356 for the rationale —
+    the general ``PATCH /settings`` route remains denied for API keys because
+    it can rewrite SMTP/LDAP/MQTT credentials, which is a much wider surface
+    than the documented dynamic-tariff use case requires.
+    """
+    await set_setting(db, "energy_cost_per_kwh", str(payload.energy_cost_per_kwh))
+    await db.commit()
+    db.expire_all()
+    return await _build_settings_response(db, is_api_key=_is_api_key)
 
 
 @router.post("/reset", response_model=AppSettings)

@@ -2131,6 +2131,13 @@ async def run_migrations(conn):
         conn,
         "ALTER TABLE api_keys ADD COLUMN can_access_cloud BOOLEAN DEFAULT FALSE",
     )
+    # Narrowly-scoped settings-write toggle for the dynamic-tariff push case
+    # documented in wiki/features/energy.md (#1356). Defaults FALSE so existing
+    # keys never silently gain settings-write capability on upgrade.
+    await _safe_execute(
+        conn,
+        "ALTER TABLE api_keys ADD COLUMN can_update_energy_cost BOOLEAN DEFAULT FALSE",
+    )
 
     # Migration: Soft-delete column for trash bin (Issue #1008). Indexed so the
     # sweeper's "SELECT ... WHERE deleted_at < cutoff" and the trash list's
