@@ -289,6 +289,7 @@ export default {
       printerUpdated: '打印机已更新',
       failedToDelete: '删除打印机失败',
       failedToAdd: '添加打印机失败',
+      connectionFailedNotAdded: '无法连接到打印机。请检查 IP 地址、序列号和访问码，并确认已启用仅局域网（LAN-only）模式。该打印机未被添加。',
       failedToUpdate: '更新打印机失败',
       commandSent: '命令已发送',
       failedToSendCommand: '发送命令失败',

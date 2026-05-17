@@ -288,6 +288,7 @@ export default {
       printerUpdated: 'プリンターを更新しました',
       failedToDelete: 'プリンターの削除に失敗しました',
       failedToAdd: 'プリンターの追加に失敗しました',
+      connectionFailedNotAdded: 'プリンターに接続できませんでした。IPアドレス、シリアル番号、アクセスコードを確認し、LAN専用モードが有効になっていることを確認してください。プリンターは追加されていません。',
       failedToUpdate: 'プリンターの更新に失敗しました',
       commandSent: 'コマンドを送信しました',
       failedToSendCommand: 'コマンドの送信に失敗しました',

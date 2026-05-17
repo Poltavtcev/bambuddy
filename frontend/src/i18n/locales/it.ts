@@ -289,6 +289,7 @@ export default {
       printerUpdated: 'Stampante aggiornata',
       failedToDelete: 'Impossibile eliminare stampante',
       failedToAdd: 'Impossibile aggiungere stampante',
+      connectionFailedNotAdded: 'Impossibile connettersi alla stampante. Verifica IP, numero di serie e codice di accesso e conferma che la modalità solo LAN sia attiva. La stampante non è stata aggiunta.',
       failedToUpdate: 'Impossibile aggiornare stampante',
       commandSent: 'Comando inviato',
       failedToSendCommand: 'Impossibile inviare comando',

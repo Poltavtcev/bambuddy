@@ -4,10 +4,15 @@ const API_BASE = '/api/v1';
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  /** Stable error code from a structured backend detail (`{code, message}`).
+   *  Frontend uses this to look up an i18n key instead of showing the raw
+   *  English fallback. Null when the backend returned a plain-string detail. */
+  code: string | null;
+  constructor(message: string, status: number, code: string | null = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -105,6 +110,7 @@ async function request<T>(
     const error = await response.json().catch(() => ({}));
     const detail = error.detail;
     let message: string;
+    let code: string | null = null;
     if (typeof detail === 'string') {
       message = detail;
     } else if (Array.isArray(detail)) {
@@ -117,6 +123,11 @@ async function request<T>(
         .filter(Boolean)
         .join('; ');
       message = joined || JSON.stringify(detail) || `HTTP ${response.status}`;
+    } else if (detail && typeof detail === 'object') {
+      // Structured detail `{code, message}` — frontend uses the code to
+      // pick an i18n key, message is the English fallback.
+      code = typeof detail.code === 'string' ? detail.code : null;
+      message = typeof detail.message === 'string' ? detail.message : `HTTP ${response.status}`;
     } else {
       message = `HTTP ${response.status}`;
     }
@@ -136,7 +147,7 @@ async function request<T>(
       }
     }
 
-    throw new ApiError(message, response.status);
+    throw new ApiError(message, response.status, code);
   }
 
   // Handle empty responses (204 No Content, etc.)

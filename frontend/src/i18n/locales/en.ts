@@ -289,6 +289,7 @@ export default {
       printerUpdated: 'Printer updated',
       failedToDelete: 'Failed to delete printer',
       failedToAdd: 'Failed to add printer',
+      connectionFailedNotAdded: 'Could not connect to the printer. Verify the IP, serial number, and access code, and confirm LAN-only mode is on. The printer was not added.',
       failedToUpdate: 'Failed to update printer',
       commandSent: 'Command sent',
       failedToSendCommand: 'Failed to send command',

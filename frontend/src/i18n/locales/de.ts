@@ -289,6 +289,7 @@ export default {
       printerUpdated: 'Drucker aktualisiert',
       failedToDelete: 'Drucker konnte nicht gelöscht werden',
       failedToAdd: 'Drucker konnte nicht hinzugefügt werden',
+      connectionFailedNotAdded: 'Keine Verbindung zum Drucker möglich. Prüfen Sie IP-Adresse, Seriennummer und Zugangscode und stellen Sie sicher, dass der Nur-LAN-Modus aktiv ist. Der Drucker wurde nicht hinzugefügt.',
       failedToUpdate: 'Drucker konnte nicht aktualisiert werden',
       commandSent: 'Befehl gesendet',
       failedToSendCommand: 'Befehl konnte nicht gesendet werden',

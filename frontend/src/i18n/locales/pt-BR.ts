@@ -289,6 +289,7 @@ export default {
       printerUpdated: 'Impressora atualizada',
       failedToDelete: 'Falha ao excluir impressora',
       failedToAdd: 'Falha ao adicionar impressora',
+      connectionFailedNotAdded: 'Não foi possível conectar à impressora. Verifique o IP, o número de série e o código de acesso, e confirme que o modo somente LAN está ativado. A impressora não foi adicionada.',
       failedToUpdate: 'Falha ao atualizar impressora',
       commandSent: 'Comando enviado',
       failedToSendCommand: 'Falha ao enviar comando',

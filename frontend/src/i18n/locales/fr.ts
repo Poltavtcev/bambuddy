@@ -289,6 +289,7 @@ export default {
       printerUpdated: 'Imprimante mise à jour',
       failedToDelete: 'Échec de la suppression',
       failedToAdd: 'Échec de l\'ajout',
+      connectionFailedNotAdded: 'Connexion à l\'imprimante impossible. Vérifiez l\'IP, le numéro de série et le code d\'accès, et confirmez que le mode LAN-only est activé. L\'imprimante n\'a pas été ajoutée.',
       failedToUpdate: 'Échec de la mise à jour',
       commandSent: 'Commande envoyée',
       failedToSendCommand: 'Échec de l\'envoi de la commande',

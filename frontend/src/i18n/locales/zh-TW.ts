@@ -289,6 +289,7 @@ export default {
       printerUpdated: '印表機已更新',
       failedToDelete: '刪除印表機失敗',
       failedToAdd: '新增印表機失敗',
+      connectionFailedNotAdded: '無法連線到印表機。請檢查 IP 位址、序號和存取碼，並確認已啟用僅區域網路（LAN-only）模式。該印表機未被新增。',
       failedToUpdate: '更新印表機失敗',
       commandSent: '命令已傳送',
       failedToSendCommand: '傳送命令失敗',
