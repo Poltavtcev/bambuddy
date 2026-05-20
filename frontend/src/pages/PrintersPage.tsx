@@ -3196,10 +3196,9 @@ function PrinterCard({
                     <div className="flex-1 h-px bg-bambu-dark-tertiary/30" />
                   </div>
 
-                  <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-2">
-                    {/* Left: Fan Status - always visible, dynamic coloring */}
+                  <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2">
+                    {/* Left: Fan Status — always show all three (MQTT); control only where model supports */}
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 min-w-0">
-                      {/* Part Cooling Fan */}
                       <FanControlButton
                         printerId={printer.id}
                         fan={1}
@@ -3208,7 +3207,7 @@ function PrinterCard({
                         connected={!!status.connected}
                         canControl={canControlFans}
                         supported={supportedFans.includes(1)}
-                        className={partFan && partFan > 0 ? 'bg-cyan-500/10 rounded' : 'bg-bambu-dark rounded'}
+                        className={partFan && partFan > 0 ? 'bg-cyan-500/10' : 'bg-bambu-dark'}
                       >
                         <Fan className={`w-3.5 h-3.5 ${partFan && partFan > 0 ? 'text-cyan-400' : 'text-bambu-gray/50'}`} />
                         <span className={`text-[10px] ${partFan && partFan > 0 ? 'text-cyan-400' : 'text-bambu-gray/50'}`}>
@@ -3216,7 +3215,6 @@ function PrinterCard({
                         </span>
                       </FanControlButton>
 
-                      {/* Auxiliary Fan */}
                       <FanControlButton
                         printerId={printer.id}
                         fan={2}
@@ -3225,7 +3223,7 @@ function PrinterCard({
                         connected={!!status.connected}
                         canControl={canControlFans}
                         supported={supportedFans.includes(2)}
-                        className={auxFan && auxFan > 0 ? 'bg-blue-500/10 rounded' : 'bg-bambu-dark rounded'}
+                        className={auxFan && auxFan > 0 ? 'bg-blue-500/10' : 'bg-bambu-dark'}
                       >
                         <Wind className={`w-3.5 h-3.5 ${auxFan && auxFan > 0 ? 'text-blue-400' : 'text-bambu-gray/50'}`} />
                         <span className={`text-[10px] ${auxFan && auxFan > 0 ? 'text-blue-400' : 'text-bambu-gray/50'}`}>
@@ -3233,7 +3231,6 @@ function PrinterCard({
                         </span>
                       </FanControlButton>
 
-                      {/* Chamber Fan */}
                       <FanControlButton
                         printerId={printer.id}
                         fan={3}
@@ -3242,7 +3239,7 @@ function PrinterCard({
                         connected={!!status.connected}
                         canControl={canControlFans}
                         supported={supportedFans.includes(3)}
-                        className={chamberFan && chamberFan > 0 ? 'bg-green-500/10 rounded' : 'bg-bambu-dark rounded'}
+                        className={chamberFan && chamberFan > 0 ? 'bg-green-500/10' : 'bg-bambu-dark'}
                       >
                         <AirVent className={`w-3.5 h-3.5 ${chamberFan && chamberFan > 0 ? 'text-green-400' : 'text-bambu-gray/50'}`} />
                         <span className={`text-[10px] ${chamberFan && chamberFan > 0 ? 'text-green-400' : 'text-bambu-gray/50'}`}>
