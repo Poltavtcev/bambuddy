@@ -66,10 +66,43 @@ DE = {
     }
 }
 
+# Ukrainian translations
+UK = {
+    "notification": {
+        # Print events
+        "print_started": "Друк розпочато",
+        "print_completed": "Друк завершено",
+        "print_failed": "Друк не вдався",
+        "print_stopped": "Друк зупинено",
+        "print_ended": "Друк завершено",
+        "print_progress": "Друк виконано на {progress}%",
+        "estimated": "Орієнтовно",
+        "time": "Час",
+        "filament": "Філамент",
+        "reason": "Причина",
+        "unknown": "Невідомо",
+        # Printer events
+        "printer_offline": "Принтер офлайн",
+        "printer_disconnected": "{printer} відключено",
+        "printer_error": "Помилка принтера: {error_type}",
+        # Filament
+        "filament_low": "Мало філаменту",
+        "slot_at_percent": "{printer}: слот {slot} — {percent}%",
+        # Maintenance
+        "maintenance_due": "Потрібне обслуговування",
+        "overdue": "ПРОТЕРМІН",
+        "soon": "Незабаром",
+        # Test notification
+        "test_title": "Тест Bambuddy",
+        "test_message": "Це тестове сповіщення від Bambuddy. Якщо ви його бачите, сповіщення працюють правильно!",
+    }
+}
+
 # All available translations
 TRANSLATIONS = {
     "en": EN,
     "de": DE,
+    "uk": UK,
 }
 
 

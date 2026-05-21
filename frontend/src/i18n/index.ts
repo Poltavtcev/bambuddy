@@ -11,6 +11,7 @@ import it from './locales/it';
 import ptBR from './locales/pt-BR';
 import zhCN from './locales/zh-CN';
 import zhTW from './locales/zh-TW';
+import uk from './locales/uk';
 
 const resources = {
   en: { translation: en },
@@ -21,6 +22,7 @@ const resources = {
   'pt-BR': { translation: ptBR },
   'zh-CN': { translation: zhCN },
   'zh-TW': { translation: zhTW },
+  uk: { translation: uk },
 };
 
 i18n
@@ -29,7 +31,7 @@ i18n
   .init({
     resources,
     fallbackLng: 'en',
-    supportedLngs: ['en', 'de', 'fr', 'ja', 'it', 'pt-BR', 'zh-CN', 'zh-TW'],
+    supportedLngs: ['en', 'de', 'fr', 'ja', 'it', 'pt-BR', 'zh-CN', 'zh-TW', 'uk'],
 
     detection: {
       // Order of detection methods
@@ -61,4 +63,5 @@ export const availableLanguages = [
   { code: 'pt-BR', name: 'Portuguese (Brazil)', nativeName: 'Português (Brasil)' },
   { code: 'zh-CN', name: 'Chinese (Simplified)', nativeName: '简体中文' },
   { code: 'zh-TW', name: 'Chinese (Traditional)', nativeName: '繁體中文' },
+  { code: 'uk', name: 'Ukrainian', nativeName: 'Українська' },
 ];
