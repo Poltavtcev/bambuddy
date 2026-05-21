@@ -5132,3 +5132,23 @@ class TestDryingCompleteCallback:
         # And finishes.
         mqtt_client._handle_ams_data({"ams": [{"id": "0", "dry_time": 0, "tray": []}]})
         assert mqtt_client._drying_events == [0, 0]
+
+    def test_tray_only_partial_does_not_fake_completion(self, mqtt_client):
+        """#1462 — a tray-bearing partial update that omits dry_time must not
+        be read as dry_time=0. The pre-fix merge dropped dry_time on such
+        partials, so the falling-edge detector saw a 60→0 edge and fired a
+        false 'drying complete' seconds after drying started — which armed
+        smart-plug auto-off and killed the printer mid-cycle."""
+        # Drying active, 60 minutes remaining.
+        mqtt_client._handle_ams_data({"ams": [{"id": "0", "dry_time": 60, "tray": []}]})
+        assert mqtt_client._drying_events == []
+
+        # Printer sends a tray-bearing partial carrying NO dry_time field.
+        mqtt_client._handle_ams_data({"ams": [{"id": "0", "tray": []}]})
+        assert mqtt_client._drying_events == []
+        # dry_time survived the partial in the merged AMS state.
+        assert mqtt_client.state.raw_data["ams"][0]["dry_time"] == 60
+
+        # Drying genuinely finishes → the real edge still fires exactly once.
+        mqtt_client._handle_ams_data({"ams": [{"id": "0", "dry_time": 0, "tray": []}]})
+        assert mqtt_client._drying_events == [0]
