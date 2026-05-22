@@ -3097,15 +3097,15 @@ export function ArchivesPage() {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-bambu-dark-secondary border border-bambu-dark-tertiary rounded-lg shadow-xl px-4 py-3 flex items-center gap-4">
           <Button variant="secondary" size="sm" onClick={clearSelection}>
             <X className="w-4 h-4" />
-            Close
+            {t('archives.page.close')}
           </Button>
           <div className="w-px h-6 bg-bambu-dark-tertiary" />
           <span className="text-white font-medium">
-            {selectedIds.size} selected
+            {t('archives.page.selected', { count: selectedIds.size })}
           </span>
           <div className="w-px h-6 bg-bambu-dark-tertiary" />
           <Button variant="secondary" size="sm" onClick={selectAll}>
-            Select All
+            {t('archives.page.selectAll')}
           </Button>
           <div className="w-px h-6 bg-bambu-dark-tertiary" />
           <Button
@@ -3116,7 +3116,7 @@ export function ArchivesPage() {
             title={!hasAnyPermission('archives:update_own', 'archives:update_all') ? t('archives.permission.noUpdateArchives') : undefined}
           >
             <Tag className="w-4 h-4" />
-            Tags
+            {t('archives.page.tags')}
           </Button>
           <Button
             variant="secondary"
@@ -3126,7 +3126,7 @@ export function ArchivesPage() {
             title={!hasAnyPermission('archives:update_own', 'archives:update_all') ? t('archives.permission.noUpdateArchives') : undefined}
           >
             <FolderKanban className="w-4 h-4" />
-            Project
+            {t('archives.page.project')}
           </Button>
           <Button
             variant="secondary"
@@ -3146,7 +3146,7 @@ export function ArchivesPage() {
             }}
           >
             <Star className="w-4 h-4" />
-            Favorite
+            {t('archives.page.favorite')}
           </Button>
           <Button
             size="sm"
@@ -3156,7 +3156,7 @@ export function ArchivesPage() {
             title={!hasAnyPermission('archives:delete_own', 'archives:delete_all') ? t('archives.permission.noDelete') : undefined}
           >
             <Trash2 className="w-4 h-4" />
-            Delete
+            {t('archives.page.delete')}
           </Button>
         </div>
       )}
@@ -3167,10 +3167,13 @@ export function ArchivesPage() {
             <div>
               <h1 className="text-2xl font-bold text-white flex items-center gap-3">
                 <ArchiveIcon className="w-7 h-7 text-bambu-green" />
-                Archives
+                {t('archives.page.title')}
               </h1>
               <p className="text-bambu-gray mt-1">
-                {filteredArchives?.length || 0} of {archives?.length || 0} prints
+                {t('archives.page.printsCount', {
+                  filtered: filteredArchives?.length || 0,
+                  total: archives?.length || 0,
+                })}
               </p>
             </div>
             <select
@@ -3230,7 +3233,7 @@ export function ArchivesPage() {
                   }}
                 >
                   <FileText className="w-4 h-4" />
-                  Export as CSV
+                  {t('stats.exportAsCsv')}
                 </button>
                 <button
                   className="w-full px-4 py-2 text-left text-white hover:bg-bambu-dark-tertiary transition-colors flex items-center gap-2 rounded-b-lg"
@@ -3259,7 +3262,7 @@ export function ArchivesPage() {
                   }}
                 >
                   <FileSpreadsheet className="w-4 h-4" />
-                  Export as Excel
+                  {t('stats.exportAsExcel')}
                 </button>
               </div>
             )}
@@ -3277,7 +3280,7 @@ export function ArchivesPage() {
           {!selectionMode && (
             <Button variant="secondary" onClick={() => setIsSelectionMode(true)}>
               <CheckSquare className="w-4 h-4" />
-              Select
+              {t('archives.menu.select')}
             </Button>
           )}
           <Button
@@ -3286,7 +3289,7 @@ export function ArchivesPage() {
             title={!hasPermission('archives:create') ? t('archives.permission.noCreate') : undefined}
           >
             <Upload className="w-4 h-4" />
-            Upload 3MF
+            {t('archives.page.upload3mf')}
           </Button>
           {hasPermission('archives:purge') && (
             <Button
@@ -3360,7 +3363,7 @@ export function ArchivesPage() {
                   setFilterPrinter(e.target.value ? Number(e.target.value) : null)
                 }
               >
-                <option value="">All Printers</option>
+                <option value="">{t('archives.log.allPrinters')}</option>
                 {printers?.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
@@ -3392,7 +3395,7 @@ export function ArchivesPage() {
                 value={filterFileType}
                 onChange={(e) => setFilterFileType(e.target.value as 'all' | 'gcode' | 'source')}
               >
-                <option value="all">All Files</option>
+                <option value="all">{t('files.allFiles')}</option>
                 <option value="gcode">Sliced (GCODE)</option>
                 <option value="source">Source Only</option>
               </select>
@@ -3407,7 +3410,7 @@ export function ArchivesPage() {
               title={filterFavorites ? t('archives.showAll') : t('archives.showFavoritesOnly')}
             >
               <Star className={`w-4 h-4 ${filterFavorites ? 'fill-yellow-400' : ''}`} />
-              <span className="text-sm hidden md:inline">{filterFavorites ? t('archives.showAll') : t('archives.showFavoritesOnly')}</span>
+              <span className="text-sm hidden md:inline">{t('archives.favorite')}</span>
             </button>
             <button
               onClick={() => setHideFailed(!hideFailed)}
@@ -3419,7 +3422,7 @@ export function ArchivesPage() {
               title={hideFailed ? t('archives.showFailedPrints') : t('archives.hideFailedPrints')}
             >
               <AlertCircle className={`w-4 h-4 ${hideFailed ? '' : ''}`} />
-              <span className="text-sm hidden md:inline">{hideFailed ? t('archives.showFailedPrints') : t('archives.hideFailedPrints')}</span>
+              <span className="text-sm hidden md:inline">{t('archives.hideFailedPrints')}</span>
             </button>
             <button
               onClick={() => setHideDuplicates(!hideDuplicates)}
