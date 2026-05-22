@@ -328,6 +328,7 @@ export default {
     connection: {
       connected: 'Connesso',
       offline: 'Offline',
+      ethernet: 'Cavo di rete',
     },
     plateStatus: {
       markCleared: 'Segna il piatto come liberato',
@@ -2145,8 +2146,12 @@ export default {
     retryDelay: 'Ritardo ripetizione',
     connectionTimeout: 'Timeout connessione',
     time_one: '{{count}} volta',
+    time_few: '{{count}} volte',
+    time_many: '{{count}} volte',
     time_other: '{{count}} volte',
     second_one: '{{count}} secondo',
+    second_few: '{{count}} secondi',
+    second_many: '{{count}} secondi',
     second_other: '{{count}} secondi',
     nSeconds: '{{count}} secondi',
     increaseForWeakWifi: 'Aumenta per stampanti con WiFi debole',
@@ -4434,10 +4439,16 @@ export default {
     allPlates: 'Tutti i piatti',
     plateNumber: 'Piatto {{number}}',
     plateCount: '{{count}} piatto',
+    plateCount_few: '{{count}} piatti',
+    plateCount_many: '{{count}} piatti',
     plateCount_other: '{{count}} piatti',
     objectCount: '{{count}} oggetto',
+    objectCount_few: '{{count}} oggetti',
+    objectCount_many: '{{count}} oggetti',
     objectCount_other: '{{count}} oggetti',
     filamentCount: '{{count}} filamento',
+    filamentCount_few: '{{count}} filamenti',
+    filamentCount_many: '{{count}} filamenti',
     filamentCount_other: '{{count}} filamenti',
     eta: 'ETA {{minutes}} min',
     noPreview: 'Nessuna anteprima disponibile per questo file',
@@ -5804,6 +5815,8 @@ export default {
     stockoutLegend: 'Esaurimento scorte',
     // Alerts toolbar
     alertCount_one: '{{count}} avviso',
+    alertCount_few: '{{count}} avvisi',
+    alertCount_many: '{{count}} avvisi',
     alertCount_other: '{{count}} avvisi',
     order: 'Ordina',
     // Settings
@@ -5828,6 +5841,8 @@ export default {
     individualSpools: 'Bobine singole',
     labelWeight: 'Etichetta',
     spoolCount_one: '{{count}} bobina',
+    spoolCount_few: '{{count}} bobine',
+    spoolCount_many: '{{count}} bobine',
     spoolCount_other: '{{count}} bobine',
     // Alerts
     stockBreakRisk: 'Rischio di rottura scorte',
@@ -5838,6 +5853,8 @@ export default {
     // Shopping list
     shoppingList: 'Lista della spesa',
     shoppingListItems_one: '({{count}} articolo)',
+    shoppingListItems_few: '({{count}} articoli)',
+    shoppingListItems_many: '({{count}} articoli)',
     shoppingListItems_other: '({{count}} articoli)',
     shoppingListEmpty: 'La lista della spesa è vuota. Clicca sull\'icona del carrello in qualsiasi riga per aggiungere articoli.',
     addToCart: 'Aggiungi alla lista della spesa',
@@ -5872,6 +5889,8 @@ export default {
     noteOptional: 'Nota (opzionale)',
     notePlaceholder: 'es. per il progetto X, urgente…',
     addNSpools_one: 'Aggiungi {{count}} bobina',
+    addNSpools_few: 'Aggiungi {{count}} bobine',
+    addNSpools_many: 'Aggiungi {{count}} bobine',
     addNSpools_other: 'Aggiungi {{count}} bobine',
     // Cart logistics
     onArrival: 'All\'arrivo',
@@ -5879,6 +5898,8 @@ export default {
     stockRunsOutBefore: 'Le scorte si esauriscono prima dello scadere del lead time di {{lt}}g.',
     atRate: 'A {{rate}}g/giorno hai bisogno di',
     moreSpools_one: '{{count}} bobina in più',
+    moreSpools_few: '{{count}} bobine in più',
+    moreSpools_many: '{{count}} bobine in più',
     moreSpools_other: '{{count}} bobine in più',
     bridgeGap: 'per colmare il divario.',
     // Permissions

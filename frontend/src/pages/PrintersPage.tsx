@@ -2624,10 +2624,10 @@ function PrinterCard({
               {status?.connected && status?.wired_network && (
                 <span
                   className="flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-status-ok/20 text-status-ok"
-                  title={t('printers.connection.ethernet', 'Ethernet')}
+                  title={t('printers.connection.ethernet')}
                 >
                   <Cable className="w-3 h-3" />
-                  {t('printers.connection.ethernet', 'Ethernet')}
+                  {t('printers.connection.ethernet')}
                 </span>
               )}
               {/* WiFi signal indicator */}
@@ -4640,7 +4640,7 @@ function PrinterCard({
               {/* Auto-off toggle */}
               <div className="flex items-center gap-2 flex-shrink-0">
                 <span className={`text-xs hidden sm:inline ${smartPlug.auto_off_executed ? 'text-bambu-green' : 'text-bambu-gray'}`}>
-                  {smartPlug.auto_off_executed ? 'Auto-off done' : 'Auto-off'}
+                  {smartPlug.auto_off_executed ? t('printers.autoOffExecuted') : t('smartPlugs.autoOff')}
                 </span>
                 <button
                   onClick={() => toggleAutoOffMutation.mutate(!smartPlug.auto_off)}

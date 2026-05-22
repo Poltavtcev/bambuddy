@@ -825,7 +825,7 @@ export function PrintModal({
     } else if (results.success === 0) {
       showToast(`Failed: ${results.errors[0]}`, 'error');
     } else {
-      showToast(`${results.success} succeeded, ${results.failed} failed`, 'error');
+      showToast(t('printers.bulk.partial', { succeeded: results.success, failed: results.failed }), 'error');
       queryClient.invalidateQueries({ queryKey: ['queue'] });
     }
   };
@@ -1172,7 +1172,7 @@ export function PrintModal({
             {/* Actions */}
             <div className={`flex gap-3 ${mode === 'reprint' ? '' : 'pt-2'}`}>
               <Button type="button" variant="secondary" onClick={onClose} className="flex-1" disabled={isSubmitting}>
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button
                 type="submit"

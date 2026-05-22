@@ -328,6 +328,7 @@ export default {
     connection: {
       connected: 'Connecté',
       offline: 'Hors ligne',
+      ethernet: 'Ethernet filaire',
     },
     plateStatus: {
       markCleared: 'Marquer le plateau comme dégagé',
@@ -2146,8 +2147,12 @@ export default {
     retryDelay: 'Délai de réessai',
     connectionTimeout: 'Délai de connexion',
     time_one: '{{count}} fois',
+    time_few: '{{count}} fois',
+    time_many: '{{count}} fois',
     time_other: '{{count}} fois',
     second_one: '{{count}} seconde',
+    second_few: '{{count}} secondes',
+    second_many: '{{count}} secondes',
     second_other: '{{count}} secondes',
     nSeconds: '{{count}} secondes',
     increaseForWeakWifi: 'Augmenter pour les imprimantes avec un WiFi faible',
@@ -4435,10 +4440,16 @@ export default {
     allPlates: 'Tous les plateaux',
     plateNumber: 'Plateau {{number}}',
     plateCount: '{{count}} plateau',
+    plateCount_few: '{{count}} plateaux',
+    plateCount_many: '{{count}} plateaux',
     plateCount_other: '{{count}} plateaux',
     objectCount: '{{count}} objet',
+    objectCount_few: '{{count}} objets',
+    objectCount_many: '{{count}} objets',
     objectCount_other: '{{count}} objets',
     filamentCount: '{{count}} filament',
+    filamentCount_few: '{{count}} filaments',
+    filamentCount_many: '{{count}} filaments',
     filamentCount_other: '{{count}} filaments',
     eta: 'Fin {{minutes}} min',
     noPreview: 'Aucun aperçu pour ce fichier',
@@ -5805,6 +5816,8 @@ export default {
     stockoutLegend: 'Rupture de stock',
     // Alerts toolbar
     alertCount_one: '{{count}} alerte',
+    alertCount_few: '{{count}} alertes',
+    alertCount_many: '{{count}} alertes',
     alertCount_other: '{{count}} alertes',
     order: 'Commander',
     // Settings
@@ -5829,6 +5842,8 @@ export default {
     individualSpools: 'Bobines individuelles',
     labelWeight: 'Étiquette',
     spoolCount_one: '{{count}} bobine',
+    spoolCount_few: '{{count}} bobines',
+    spoolCount_many: '{{count}} bobines',
     spoolCount_other: '{{count}} bobines',
     // Alerts
     stockBreakRisk: 'Risque de rupture de stock',
@@ -5839,6 +5854,8 @@ export default {
     // Shopping list
     shoppingList: 'Liste d\'achats',
     shoppingListItems_one: '({{count}} article)',
+    shoppingListItems_few: '({{count}} articles)',
+    shoppingListItems_many: '({{count}} articles)',
     shoppingListItems_other: '({{count}} articles)',
     shoppingListEmpty: 'La liste d\'achats est vide. Cliquez sur l\'icône panier d\'une ligne pour ajouter des articles.',
     addToCart: 'Ajouter à la liste d\'achats',
@@ -5873,6 +5890,8 @@ export default {
     noteOptional: 'Note (optionnel)',
     notePlaceholder: 'ex. pour le projet X, urgent…',
     addNSpools_one: 'Ajouter {{count}} bobine',
+    addNSpools_few: 'Ajouter {{count}} bobines',
+    addNSpools_many: 'Ajouter {{count}} bobines',
     addNSpools_other: 'Ajouter {{count}} bobines',
     // Cart logistics
     onArrival: 'À la livraison',
@@ -5880,6 +5899,8 @@ export default {
     stockRunsOutBefore: 'Le stock s\'épuise avant la fin du délai de {{lt}}j.',
     atRate: 'À {{rate}}g/jour, vous avez besoin de',
     moreSpools_one: '{{count}} bobine supplémentaire',
+    moreSpools_few: '{{count}} bobines supplémentaires',
+    moreSpools_many: '{{count}} bobines supplémentaires',
     moreSpools_other: '{{count}} bobines supplémentaires',
     bridgeGap: 'pour combler l\'écart.',
     // Permissions

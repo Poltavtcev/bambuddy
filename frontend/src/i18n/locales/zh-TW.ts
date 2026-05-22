@@ -328,6 +328,7 @@ export default {
     connection: {
       connected: '已連線',
       offline: '離線',
+      ethernet: '乙太網路',
     },
     plateStatus: {
       markCleared: '將列印板標記為已清理',
@@ -2189,8 +2190,12 @@ export default {
     retryDelay: '重試延遲',
     connectionTimeout: '連線超時',
     time_one: '{{count}} 次',
+    time_few: '{{count}} 次',
+    time_many: '{{count}} 次',
     time_other: '{{count}} 次',
     second_one: '{{count}} 秒',
+    second_few: '{{count}} 秒',
+    second_many: '{{count}} 秒',
     second_other: '{{count}} 秒',
     nSeconds: '{{count}} 秒',
     increaseForWeakWifi: '對Wi-Fi 訊號弱的印表機增加此值',
@@ -4434,10 +4439,16 @@ export default {
     allPlates: '所有板',
     plateNumber: '板 {{number}}',
     plateCount: '{{count}} 個板',
+    plateCount_few: '{{count}} 個板',
+    plateCount_many: '{{count}} 個板',
     plateCount_other: '{{count}} 個板',
     objectCount: '{{count}} 個物件',
+    objectCount_few: '{{count}} 個物件',
+    objectCount_many: '{{count}} 個物件',
     objectCount_other: '{{count}} 個物件',
     filamentCount: '{{count}} 種耗材',
+    filamentCount_few: '{{count}} 種耗材',
+    filamentCount_many: '{{count}} 種耗材',
     filamentCount_other: '{{count}} 種耗材',
     eta: '預計 {{minutes}} 分鐘',
     noPreview: '此檔案無可用預覽',
@@ -5803,6 +5814,8 @@ export default {
     stockoutLegend: '斷貨',
     // Alerts toolbar
     alertCount_one: '{{count}}條警告',
+    alertCount_few: '{{count}}條警告',
+    alertCount_many: '{{count}}條警告',
     alertCount_other: '{{count}}條警告',
     order: '訂購',
     // Settings
@@ -5827,6 +5840,8 @@ export default {
     individualSpools: '單個料卷',
     labelWeight: '標示重量',
     spoolCount_one: '{{count}}個線軸',
+    spoolCount_few: '{{count}}個線軸',
+    spoolCount_many: '{{count}}個線軸',
     spoolCount_other: '{{count}}個線軸',
     // Alerts
     stockBreakRisk: '斷貨風險',
@@ -5837,6 +5852,8 @@ export default {
     // Shopping list
     shoppingList: '購物清單',
     shoppingListItems_one: '（{{count}}項）',
+    shoppingListItems_few: '（{{count}}項）',
+    shoppingListItems_many: '（{{count}}項）',
     shoppingListItems_other: '（{{count}}項）',
     shoppingListEmpty: '購物清單為空。點擊任意列的購物車圖示以新增商品。',
     addToCart: '新增至購物清單',
@@ -5871,6 +5888,8 @@ export default {
     noteOptional: '備註（選填）',
     notePlaceholder: '例如：用於專案X，緊急…',
     addNSpools_one: '新增{{count}}個線軸',
+    addNSpools_few: '新增{{count}}個線軸',
+    addNSpools_many: '新增{{count}}個線軸',
     addNSpools_other: '新增{{count}}個線軸',
     // Cart logistics
     onArrival: '到貨時',
@@ -5878,6 +5897,8 @@ export default {
     stockRunsOutBefore: '庫存在 {{lt}} 天交貨期結束前耗盡。',
     atRate: '按 {{rate}}g/天的速度，您需要',
     moreSpools_one: '再{{count}}個線軸',
+    moreSpools_few: '再{{count}}個線軸',
+    moreSpools_many: '再{{count}}個線軸',
     moreSpools_other: '再{{count}}個線軸',
     bridgeGap: '來彌補缺口。',
     // Permissions

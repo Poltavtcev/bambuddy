@@ -328,6 +328,7 @@ export default {
     connection: {
       connected: 'Conectado',
       offline: 'Offline',
+      ethernet: 'Cabo de rede',
     },
     plateStatus: {
       markCleared: 'Marcar placa como liberada',
@@ -2145,8 +2146,12 @@ export default {
     retryDelay: 'Atraso entre tentativas',
     connectionTimeout: 'Tempo limite de conexão',
     time_one: '{{count}} vez',
+    time_few: '{{count}} vezes',
+    time_many: '{{count}} vezes',
     time_other: '{{count}} vezes',
     second_one: '{{count}} segundo',
+    second_few: '{{count}} segundos',
+    second_many: '{{count}} segundos',
     second_other: '{{count}} segundos',
     nSeconds: '{{count}} segundos',
     increaseForWeakWifi: 'Aumente para impressoras com WiFi fraco',
@@ -4434,10 +4439,16 @@ export default {
     allPlates: 'Todas as Placas',
     plateNumber: 'Placa {{number}}',
     plateCount: '{{count}} placa',
+    plateCount_few: '{{count}} placas',
+    plateCount_many: '{{count}} placas',
     plateCount_other: '{{count}} placas',
     objectCount: '{{count}} objeto',
+    objectCount_few: '{{count}} objetos',
+    objectCount_many: '{{count}} objetos',
     objectCount_other: '{{count}} objetos',
     filamentCount: '{{count}} filamento',
+    filamentCount_few: '{{count}} filamentos',
+    filamentCount_many: '{{count}} filamentos',
     filamentCount_other: '{{count}} filamentos',
     eta: 'ETA {{minutes}} min',
     noPreview: 'Pré-visualização não disponível para este arquivo',
@@ -5804,6 +5815,8 @@ export default {
     stockoutLegend: 'Ruptura de estoque',
     // Alerts toolbar
     alertCount_one: '{{count}} alerta',
+    alertCount_few: '{{count}} alertas',
+    alertCount_many: '{{count}} alertas',
     alertCount_other: '{{count}} alertas',
     order: 'Pedir',
     // Settings
@@ -5828,6 +5841,8 @@ export default {
     individualSpools: 'Carretéis individuais',
     labelWeight: 'Etiqueta',
     spoolCount_one: '{{count}} carretel',
+    spoolCount_few: '{{count}} carretéis',
+    spoolCount_many: '{{count}} carretéis',
     spoolCount_other: '{{count}} carretéis',
     // Alerts
     stockBreakRisk: 'Risco de ruptura de estoque',
@@ -5838,6 +5853,8 @@ export default {
     // Shopping list
     shoppingList: 'Lista de Compras',
     shoppingListItems_one: '({{count}} item)',
+    shoppingListItems_few: '({{count}} itens)',
+    shoppingListItems_many: '({{count}} itens)',
     shoppingListItems_other: '({{count}} itens)',
     shoppingListEmpty: 'A lista de compras está vazia. Clique no ícone do carrinho em qualquer linha para adicionar itens.',
     addToCart: 'Adicionar à lista de compras',
@@ -5872,6 +5889,8 @@ export default {
     noteOptional: 'Observação (opcional)',
     notePlaceholder: 'ex. para o projeto X, urgente…',
     addNSpools_one: 'Adicionar {{count}} carretel',
+    addNSpools_few: 'Adicionar {{count}} carretéis',
+    addNSpools_many: 'Adicionar {{count}} carretéis',
     addNSpools_other: 'Adicionar {{count}} carretéis',
     // Cart logistics
     onArrival: 'Na Chegada',
@@ -5879,6 +5898,8 @@ export default {
     stockRunsOutBefore: 'O estoque se esgota antes do lead time de {{lt}}d decorrer.',
     atRate: 'A {{rate}}g/dia você precisa de',
     moreSpools_one: '{{count}} carretel a mais',
+    moreSpools_few: '{{count}} carretéis a mais',
+    moreSpools_many: '{{count}} carretéis a mais',
     moreSpools_other: '{{count}} carretéis a mais',
     bridgeGap: 'para cobrir a lacuna.',
     // Permissions
