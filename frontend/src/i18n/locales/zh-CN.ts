@@ -1096,6 +1096,8 @@ export default {
       historyCleared: '已清除 {{count}} 条历史记录',
       clearHistoryFailed: '清除历史失败',
       updateFailed: '更新项目失败',
+      itemUpdated: '队列项目已更新',
+      updateItemFailed: '更新队列项目失败',
       bulkCancelled: '已取消 {{count}} 个项目',
       bulkCancelFailed: '批量取消项目失败',
     },
@@ -1895,6 +1897,10 @@ export default {
     disableAuthentication: '禁用身份验证',
     // Additional settings
     configureBambuddy: '配置 Bambuddy',
+    searchPlaceholder: '搜索设置…',
+    noSearchResults: '没有匹配的设置。',
+    filterTemplates: '筛选模板…',
+    noTemplatesMatch: '没有与您筛选条件匹配的模板。',
     systemDefault: '系统默认',
     archiveSettings: '归档设置',
     newWindow: '新窗口',
@@ -3881,6 +3887,16 @@ export default {
     staggerTotal: '共 {{minutes}} 分钟',
     staggerToPrinters: '分批发送到 {{count}} 台打印机',
     gcodeInjection: '注入自动打印G-code',
+    scheduleWhen: '打印时间',
+    scheduleScheduled: '定时',
+    scheduleQueueOnly: '仅排队',
+    scheduleDateTime: '日期和时间',
+    scheduleInvalidDateTime: '请输入有效的日期和时间',
+    requirePreviousSuccess: '仅在前次打印成功时开始',
+    autoPowerOffAfter: '完成后关闭打印机电源',
+    scheduleHelpAsap: '打印机空闲后将立即开始打印。',
+    scheduleHelpScheduled: '如果打印机空闲，将在预定时间开始打印。如果忙碌，将等待打印机可用。',
+    scheduleHelpManual: '打印将被暂存但不会自动开始。使用"开始"按钮将其释放到队列。',
   },
 
   // Backup
@@ -4887,6 +4903,14 @@ export default {
 
   // External Links
   externalLinks: {
+    title: '侧边栏链接',
+    addLink: '添加链接',
+    description: '向侧边栏导航添加外部链接。拖动以重新排序。',
+    clickToAdd: '点击"添加链接"以添加',
+    editLink: '编辑链接',
+    addExternalLink: '添加外部链接',
+    deleteTitle: '删除链接',
+    deleteMessage: '确定要删除"{{name}}"吗？此操作无法撤销。',
     noLinksConfigured: '未配置外部链接',
     deleteLink: '删除链接',
     removeCustomIcon: '移除自定义图标',

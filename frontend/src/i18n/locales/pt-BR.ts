@@ -1096,6 +1096,8 @@ export default {
       historyCleared: 'Limpar {{count}} item(s) do histórico',
       clearHistoryFailed: 'Falha ao limpar histórico',
       updateFailed: 'Falha ao atualizar itens',
+      itemUpdated: 'Item da fila atualizado',
+      updateItemFailed: 'Falha ao atualizar item da fila',
       bulkCancelled: 'Cancelado {{count}} item(s)',
       bulkCancelFailed: 'Falha ao cancelar itens',
     },
@@ -1851,6 +1853,10 @@ export default {
     disableAuthentication: 'Desativar Autenticação',
     // Additional settings
     configureBambuddy: 'Configurar Bambuddy',
+    searchPlaceholder: 'Pesquisar configurações…',
+    noSearchResults: 'Nenhuma configuração correspondente.',
+    filterTemplates: 'Filtrar modelos…',
+    noTemplatesMatch: 'Nenhum modelo corresponde ao seu filtro.',
     systemDefault: 'Padrão do Sistema',
     archiveSettings: 'Configurações de Arquivo',
     newWindow: 'Nova Janela',
@@ -3881,6 +3887,16 @@ export default {
     staggerTotal: 'total: {{minutes}} min',
     staggerToPrinters: 'Escalonar para {{count}} impressoras',
     gcodeInjection: 'Injetar G-code de auto-impressão',
+    scheduleWhen: 'Quando imprimir',
+    scheduleScheduled: 'Agendado',
+    scheduleQueueOnly: 'Somente fila',
+    scheduleDateTime: 'Data e hora',
+    scheduleInvalidDateTime: 'Insira uma data e hora válidas',
+    requirePreviousSuccess: 'Iniciar somente se a impressão anterior for bem-sucedida',
+    autoPowerOffAfter: 'Desligar a impressora ao concluir',
+    scheduleHelpAsap: 'A impressão começará assim que a impressora estiver ociosa.',
+    scheduleHelpScheduled: 'A impressão começará no horário agendado se a impressora estiver ociosa. Se estiver ocupada, aguardará até ficar disponível.',
+    scheduleHelpManual: 'A impressão será preparada, mas não iniciará automaticamente. Use o botão Iniciar para liberá-la na fila.',
   },
 
   // Backup
@@ -4888,6 +4904,14 @@ export default {
 
   // External Links
   externalLinks: {
+    title: 'Links da barra lateral',
+    addLink: 'Adicionar link',
+    description: 'Adicione links externos à navegação da barra lateral. Arraste para reordenar.',
+    clickToAdd: 'Clique em "Adicionar link" para adicionar um',
+    editLink: 'Editar link',
+    addExternalLink: 'Adicionar link externo',
+    deleteTitle: 'Excluir link',
+    deleteMessage: 'Tem certeza de que deseja excluir "{{name}}"? Esta ação não pode ser desfeita.',
     noLinksConfigured: 'Nenhum link externo configurado',
     deleteLink: 'Excluir link',
     removeCustomIcon: 'Remover ícone personalizado',

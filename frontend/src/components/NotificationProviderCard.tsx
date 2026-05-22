@@ -218,7 +218,7 @@ export function NotificationProviderCard({ provider, onEdit }: NotificationProvi
               ) : (
                 <XCircle className="w-4 h-4" />
               )}
-              <span>{testResult.message}</span>
+              <span>{testResult.success ? t('settings.testSuccess') : testResult.message}</span>
             </div>
           )}
 

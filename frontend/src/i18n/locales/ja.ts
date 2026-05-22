@@ -1095,6 +1095,8 @@ export default {
       historyCleared: '{{count}}件の履歴をクリアしました',
       clearHistoryFailed: '履歴のクリアに失敗しました',
       updateFailed: 'アイテムの更新に失敗しました',
+      itemUpdated: 'キューアイテムを更新しました',
+      updateItemFailed: 'キューアイテムの更新に失敗しました',
       bulkCancelled: '{{count}}件のアイテムをキャンセルしました',
       bulkCancelFailed: 'アイテムのキャンセルに失敗しました',
     },
@@ -1893,6 +1895,10 @@ export default {
     disableAuthentication: '認証を無効化',
     // Additional settings
     configureBambuddy: 'Bambuddyを設定',
+    searchPlaceholder: '設定を検索…',
+    noSearchResults: '一致する設定がありません。',
+    filterTemplates: 'テンプレートをフィルター…',
+    noTemplatesMatch: 'フィルターに一致するテンプレートがありません。',
     systemDefault: 'システムデフォルト',
     archiveSettings: 'アーカイブ設定',
     newWindow: '新しいウィンドウ',
@@ -3893,6 +3899,16 @@ export default {
     staggerTotal: '合計: {{minutes}}分',
     staggerToPrinters: '{{count}}台のプリンターに段階的に送信',
     gcodeInjection: '自動印刷G-codeを挿入',
+    scheduleWhen: '印刷タイミング',
+    scheduleScheduled: 'スケジュール',
+    scheduleQueueOnly: 'キューのみ',
+    scheduleDateTime: '日時',
+    scheduleInvalidDateTime: '有効な日時を入力してください',
+    requirePreviousSuccess: '前回の印刷が成功した場合のみ開始',
+    autoPowerOffAfter: '完了後にプリンターの電源を切る',
+    scheduleHelpAsap: 'プリンターがアイドル状態になるとすぐに印刷が開始されます。',
+    scheduleHelpScheduled: 'プリンターがアイドル状態であれば、予定時刻に印刷が開始されます。使用中の場合は、利用可能になるまで待機します。',
+    scheduleHelpManual: '印刷は準備されますが、自動的には開始されません。「開始」ボタンを使用してキューに追加してください。',
   },
 
   // Backup
@@ -4900,6 +4916,14 @@ export default {
 
   // External Links
   externalLinks: {
+    title: 'サイドバーリンク',
+    addLink: 'リンクを追加',
+    description: 'サイドバーナビゲーションに外部リンクを追加します。ドラッグして並べ替えます。',
+    clickToAdd: '「リンクを追加」をクリックして追加',
+    editLink: 'リンクを編集',
+    addExternalLink: '外部リンクを追加',
+    deleteTitle: 'リンクを削除',
+    deleteMessage: '「{{name}}」を削除してもよろしいですか？この操作は元に戻せません。',
     noLinksConfigured: '外部リンクが設定されていません',
     deleteLink: 'リンクを削除',
     removeCustomIcon: 'カスタムアイコンを削除',

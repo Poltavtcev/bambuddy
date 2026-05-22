@@ -1096,6 +1096,8 @@ export default {
       historyCleared: '{{count}} éléments effacés',
       clearHistoryFailed: 'Échec effacement',
       updateFailed: 'Échec mise à jour',
+      itemUpdated: 'Élément de file d\'attente mis à jour',
+      updateItemFailed: 'Échec de la mise à jour de l\'élément de file d\'attente',
       bulkCancelled: '{{count}} éléments annulés',
       bulkCancelFailed: 'Échec annulation',
     },
@@ -1851,6 +1853,10 @@ export default {
     disableAuthentication: 'Désactiver',
     // Additional settings
     configureBambuddy: 'Configurer Bambuddy',
+    searchPlaceholder: 'Rechercher dans les paramètres…',
+    noSearchResults: 'Aucun paramètre correspondant.',
+    filterTemplates: 'Filtrer les modèles…',
+    noTemplatesMatch: 'Aucun modèle ne correspond à votre filtre.',
     systemDefault: 'Défaut système',
     archiveSettings: 'Réglages Archives',
     newWindow: 'Nouvelle fenêtre',
@@ -3882,6 +3888,16 @@ export default {
     staggerTotal: 'total : {{minutes}} min',
     staggerToPrinters: 'Échelonner sur {{count}} imprimantes',
     gcodeInjection: 'Injecter le G-code auto-impression',
+    scheduleWhen: 'Quand imprimer',
+    scheduleScheduled: 'Planifié',
+    scheduleQueueOnly: 'File d\'attente uniquement',
+    scheduleDateTime: 'Date et heure',
+    scheduleInvalidDateTime: 'Veuillez saisir une date et une heure valides',
+    requirePreviousSuccess: 'Démarrer uniquement si l\'impression précédente a réussi',
+    autoPowerOffAfter: 'Éteindre l\'imprimante à la fin',
+    scheduleHelpAsap: 'L\'impression démarrera dès que l\'imprimante sera disponible.',
+    scheduleHelpScheduled: 'L\'impression démarrera à l\'heure prévue si l\'imprimante est disponible. Si elle est occupée, elle attendra qu\'elle se libère.',
+    scheduleHelpManual: 'L\'impression sera préparée mais ne démarrera pas automatiquement. Utilisez le bouton Démarrer pour la mettre en file d\'attente.',
   },
 
   // Backup
@@ -4889,6 +4905,14 @@ export default {
 
   // External Links
   externalLinks: {
+    title: 'Liens de la barre latérale',
+    addLink: 'Ajouter un lien',
+    description: 'Ajoutez des liens externes à la navigation de la barre latérale. Glissez pour réorganiser.',
+    clickToAdd: 'Cliquez sur « Ajouter un lien » pour en ajouter un',
+    editLink: 'Modifier le lien',
+    addExternalLink: 'Ajouter un lien externe',
+    deleteTitle: 'Supprimer le lien',
+    deleteMessage: 'Voulez-vous vraiment supprimer « {{name}} » ? Cette action est irréversible.',
     noLinksConfigured: 'Aucun lien externe configuré',
     deleteLink: 'Supprimer lien',
     removeCustomIcon: 'Retirer icône personnalisée',

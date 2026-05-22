@@ -490,12 +490,12 @@ export function PrintModal({
     mutationFn: (data: PrintQueueItemUpdate) => api.updateQueueItem(queueItem!.id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['queue'] });
-      showToast('Queue item updated');
+      showToast(t('queue.toast.itemUpdated'));
       onSuccess?.();
       onClose();
     },
     onError: (error: Error) => {
-      showToast(error.message || 'Failed to update queue item', 'error');
+      showToast(error.message || t('queue.toast.updateItemFailed'), 'error');
     },
   });
 
@@ -812,7 +812,7 @@ export function PrintModal({
         showToast(t('queue.itemsQueued', { count: results.success }));
       } else if (mode !== 'reprint') {
         if (mode === 'edit-queue-item') {
-          showToast('Queue item updated');
+          showToast(t('queue.toast.itemUpdated'));
         } else if (results.success === 1) {
           showToast(assignmentMode === 'model' ? `Queued for any ${targetModel}` : t('queue.printQueued'));
         } else {
