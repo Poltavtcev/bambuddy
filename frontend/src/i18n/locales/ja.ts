@@ -331,6 +331,7 @@ export default {
     connection: {
       connected: '接続中',
       offline: 'オフライン',
+      ethernet: '有線LAN',
     },
     plateStatus: {
       markCleared: 'プレートをクリア済みにする',
@@ -2213,8 +2214,12 @@ export default {
     retryDelay: 'リトライ遅延',
     connectionTimeout: '接続タイムアウト',
     time_one: '{{count}}回',
+    time_few: '{{count}}回',
+    time_many: '{{count}}回',
     time_other: '{{count}}回',
     second_one: '{{count}}秒',
+    second_few: '{{count}}秒',
+    second_many: '{{count}}秒',
     second_other: '{{count}}秒',
     nSeconds: '{{count}}秒',
     increaseForWeakWifi: 'Wi-Fiが弱いプリンター用に増やしてください',
@@ -4465,10 +4470,16 @@ export default {
     allPlates: '全プレート',
     plateNumber: 'プレート {{number}}',
     plateCount: '{{count}} プレート',
+    plateCount_few: '{{count}} プレート',
+    plateCount_many: '{{count}} プレート',
     plateCount_other: '{{count}} プレート',
     objectCount: '{{count}} オブジェクト',
+    objectCount_few: '{{count}} オブジェクト',
+    objectCount_many: '{{count}} オブジェクト',
     objectCount_other: '{{count}} オブジェクト',
     filamentCount: '{{count}} フィラメント',
+    filamentCount_few: '{{count}} フィラメント',
+    filamentCount_many: '{{count}} フィラメント',
     filamentCount_other: '{{count}} フィラメント',
     eta: '予想時間 {{minutes}} 分',
     noPreview: 'このファイルのプレビューは利用できません',
@@ -5835,6 +5846,8 @@ export default {
     stockoutLegend: '品切れ',
     // Alerts toolbar
     alertCount_one: '{{count}}件の警告',
+    alertCount_few: '{{count}}件の警告',
+    alertCount_many: '{{count}}件の警告',
     alertCount_other: '{{count}}件の警告',
     order: '注文',
     // Settings
@@ -5859,6 +5872,8 @@ export default {
     individualSpools: '個別スプール',
     labelWeight: 'ラベル',
     spoolCount_one: '{{count}}個のスプール',
+    spoolCount_few: '{{count}}個のスプール',
+    spoolCount_many: '{{count}}個のスプール',
     spoolCount_other: '{{count}}個のスプール',
     // Alerts
     stockBreakRisk: '在庫切れリスク',
@@ -5869,6 +5884,8 @@ export default {
     // Shopping list
     shoppingList: '購入リスト',
     shoppingListItems_one: '（{{count}}件）',
+    shoppingListItems_few: '（{{count}}件）',
+    shoppingListItems_many: '（{{count}}件）',
     shoppingListItems_other: '（{{count}}件）',
     shoppingListEmpty: '購入リストは空です。行のカートアイコンをクリックしてアイテムを追加してください。',
     addToCart: '購入リストに追加',
@@ -5903,6 +5920,8 @@ export default {
     noteOptional: 'メモ（任意）',
     notePlaceholder: '例：プロジェクトX用、緊急…',
     addNSpools_one: '{{count}}個のスプールを追加',
+    addNSpools_few: '{{count}}個のスプールを追加',
+    addNSpools_many: '{{count}}個のスプールを追加',
     addNSpools_other: '{{count}}個のスプールを追加',
     // Cart logistics
     onArrival: '入荷時',
@@ -5910,6 +5929,8 @@ export default {
     stockRunsOutBefore: 'リードタイム{{lt}}日が経過する前に在庫が枯渇します。',
     atRate: '{{rate}}g/日のペースでは',
     moreSpools_one: 'あと{{count}}個のスプール',
+    moreSpools_few: 'あと{{count}}個のスプール',
+    moreSpools_many: 'あと{{count}}個のスプール',
     moreSpools_other: 'あと{{count}}個のスプール',
     bridgeGap: 'が不足を補うために必要です。',
     // Permissions

@@ -260,11 +260,11 @@ export function FilamentMapping({
               {item.status === 'match' ? (
                 <Check className="w-3 h-3 text-bambu-green" />
               ) : item.status === 'type_only' ? (
-                <span title="Same type, different color">
+                <span title={t('printModal.sameTypeDifferentColor')}>
                   <AlertTriangle className="w-3 h-3 text-yellow-400" />
                 </span>
               ) : (
-                <span title="Filament type not loaded">
+                <span title={t('printModal.filamentTypeNotLoaded')}>
                   <AlertTriangle className="w-3 h-3 text-orange-400" />
                 </span>
               )}

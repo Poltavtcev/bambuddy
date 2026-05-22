@@ -332,6 +332,7 @@ export default {
     connection: {
       connected: 'Connected',
       offline: 'Offline',
+      ethernet: 'Ethernet',
     },
     plateStatus: {
       markCleared: 'Mark plate as cleared',
@@ -2217,8 +2218,12 @@ export default {
     retryDelay: 'Retry delay',
     connectionTimeout: 'Connection timeout',
     time_one: '{{count}} time',
+    time_few: '{{count}} times',
+    time_many: '{{count}} times',
     time_other: '{{count}} times',
     second_one: '{{count}} second',
+    second_few: '{{count}} seconds',
+    second_many: '{{count}} seconds',
     second_other: '{{count}} seconds',
     nSeconds: '{{count}} seconds',
     increaseForWeakWifi: 'Increase for printers with weak WiFi',
@@ -4477,10 +4482,16 @@ export default {
     allPlates: 'All Plates',
     plateNumber: 'Plate {{number}}',
     plateCount: '{{count}} plate',
+    plateCount_few: '{{count}} plates',
+    plateCount_many: '{{count}} plates',
     plateCount_other: '{{count}} plates',
     objectCount: '{{count}} object',
+    objectCount_few: '{{count}} objects',
+    objectCount_many: '{{count}} objects',
     objectCount_other: '{{count}} objects',
     filamentCount: '{{count}} filament',
+    filamentCount_few: '{{count}} filaments',
+    filamentCount_many: '{{count}} filaments',
     filamentCount_other: '{{count}} filaments',
     eta: 'ETA {{minutes}} min',
     noPreview: 'No preview available for this file',
@@ -5849,6 +5860,8 @@ export default {
     stockoutLegend: 'Stockout',
     // Alerts toolbar
     alertCount_one: '{{count}} alert',
+    alertCount_few: '{{count}} alerts',
+    alertCount_many: '{{count}} alerts',
     alertCount_other: '{{count}} alerts',
     order: 'Order',
     // Settings
@@ -5873,6 +5886,8 @@ export default {
     individualSpools: 'Individual spools',
     labelWeight: 'Label',
     spoolCount_one: '{{count}} spool',
+    spoolCount_few: '{{count}} spools',
+    spoolCount_many: '{{count}} spools',
     spoolCount_other: '{{count}} spools',
     // Alerts
     stockBreakRisk: 'Stock break risk',
@@ -5883,6 +5898,8 @@ export default {
     // Shopping list
     shoppingList: 'Shopping List',
     shoppingListItems_one: '({{count}} item)',
+    shoppingListItems_few: '({{count}} items)',
+    shoppingListItems_many: '({{count}} items)',
     shoppingListItems_other: '({{count}} items)',
     shoppingListEmpty: 'Shopping list is empty. Click the cart icon on any row to add items.',
     addToCart: 'Add to shopping list',
@@ -5917,6 +5934,8 @@ export default {
     noteOptional: 'Note (optional)',
     notePlaceholder: 'e.g. for project X, urgent…',
     addNSpools_one: 'Add {{count}} spool',
+    addNSpools_few: 'Add {{count}} spools',
+    addNSpools_many: 'Add {{count}} spools',
     addNSpools_other: 'Add {{count}} spools',
     // Cart logistics
     onArrival: 'On Arrival',
@@ -5924,6 +5943,8 @@ export default {
     stockRunsOutBefore: 'Stock runs out before the {{lt}}d lead time elapses.',
     atRate: 'At {{rate}}g/day you need',
     moreSpools_one: '{{count}} more spool',
+    moreSpools_few: '{{count}} more spools',
+    moreSpools_many: '{{count}} more spools',
     moreSpools_other: '{{count}} more spools',
     bridgeGap: 'to bridge the gap.',
     // Permissions

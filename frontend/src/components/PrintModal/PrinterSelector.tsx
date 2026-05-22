@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQueryClient, useQueries } from '@tanstack/react-query';
 import {
   Printer as PrinterIcon,
@@ -221,6 +222,7 @@ export function PrinterSelector({
   onTargetLocationChange,
   slicedForModel,
 }: PrinterSelectorWithMappingProps) {
+  const { t } = useTranslation();
   // State for showing all printers vs only matching model
   const [showAllPrinters, setShowAllPrinters] = useState(false);
 
@@ -258,15 +260,15 @@ export function PrinterSelector({
   const getPrinterStateLabel = (printerId: number): string | null => {
     const status = printerStatusMap.get(printerId);
     if (!status) return null;
-    if (!status.connected) return 'Offline';
+    if (!status.connected) return t('printers.status.offline');
     const state = status.state;
     if (!state) return null;
-    if (state === 'RUNNING') return status.stg_cur_name || 'Printing';
+    if (state === 'RUNNING') return status.stg_cur_name || t('printers.status.printing');
     if (state === 'PREPARE') return 'Preparing';
-    if (state === 'PAUSE') return 'Paused';
-    if (state === 'IDLE') return 'Idle';
-    if (state === 'FINISH') return 'Finished';
-    if (state === 'FAILED') return 'Failed';
+    if (state === 'PAUSE') return t('printers.status.paused');
+    if (state === 'IDLE') return t('printers.status.idle');
+    if (state === 'FINISH') return t('printers.status.finished');
+    if (state === 'FAILED') return t('queue.status.failed');
     return state;
   };
 

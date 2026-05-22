@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Archive } from '../api/client';
 import { api } from '../api/client';
@@ -26,6 +27,7 @@ const MONTH_NAMES = [
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export function CalendarView({ archives, onArchiveClick, highlightedArchiveId }: CalendarViewProps) {
+  const { t } = useTranslation();
   const today = new Date();
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
@@ -110,7 +112,7 @@ export function CalendarView({ archives, onArchiveClick, highlightedArchiveId }:
               onClick={goToToday}
               className="px-2 py-1 text-xs bg-bambu-dark-tertiary hover:bg-bambu-green/20 text-bambu-gray hover:text-white rounded transition-colors"
             >
-              Today
+              {t('common.today')}
             </button>
           </div>
           <button
@@ -258,7 +260,7 @@ export function CalendarView({ archives, onArchiveClick, highlightedArchiveId }:
                       </p>
                       <div className="flex items-center gap-2 text-xs">
                         <span className={archive.status === 'failed' ? 'text-red-400' : 'text-green-400'}>
-                          {archive.status === 'failed' ? 'Failed' : 'Completed'}
+                          {archive.status === 'failed' ? t('archives.status.failed') : t('archives.status.completed')}
                         </span>
                         {archive.filament_color && (
                           <div className="flex gap-0.5">

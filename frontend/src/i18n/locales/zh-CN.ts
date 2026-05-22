@@ -332,6 +332,7 @@ export default {
     connection: {
       connected: '已连接',
       offline: '离线',
+      ethernet: '以太网',
     },
     plateStatus: {
       markCleared: '将打印板标记为已清理',
@@ -2206,8 +2207,12 @@ export default {
     retryDelay: '重试延迟',
     connectionTimeout: '连接超时',
     time_one: '{{count}}次',
+    time_few: '{{count}}次',
+    time_many: '{{count}}次',
     time_other: '{{count}}次',
     second_one: '{{count}}秒',
+    second_few: '{{count}}秒',
+    second_many: '{{count}}秒',
     second_other: '{{count}}秒',
     nSeconds: '{{count}}秒',
     increaseForWeakWifi: '对WiFi信号弱的打印机增加此值',
@@ -4453,10 +4458,16 @@ export default {
     allPlates: '所有板',
     plateNumber: '板 {{number}}',
     plateCount: '{{count}} 个板',
+    plateCount_few: '{{count}} 个板',
+    plateCount_many: '{{count}} 个板',
     plateCount_other: '{{count}} 个板',
     objectCount: '{{count}} 个对象',
+    objectCount_few: '{{count}} 个对象',
+    objectCount_many: '{{count}} 个对象',
     objectCount_other: '{{count}} 个对象',
     filamentCount: '{{count}} 种耗材',
+    filamentCount_few: '{{count}} 种耗材',
+    filamentCount_many: '{{count}} 种耗材',
     filamentCount_other: '{{count}} 种耗材',
     eta: '预计 {{minutes}} 分钟',
     noPreview: '此文件无可用预览',
@@ -5822,6 +5833,8 @@ export default {
     stockoutLegend: '断货',
     // Alerts toolbar
     alertCount_one: '{{count}}条警告',
+    alertCount_few: '{{count}}条警告',
+    alertCount_many: '{{count}}条警告',
     alertCount_other: '{{count}}条警告',
     order: '订购',
     // Settings
@@ -5846,6 +5859,8 @@ export default {
     individualSpools: '单个料卷',
     labelWeight: '标注重量',
     spoolCount_one: '{{count}}个线轴',
+    spoolCount_few: '{{count}}个线轴',
+    spoolCount_many: '{{count}}个线轴',
     spoolCount_other: '{{count}}个线轴',
     // Alerts
     stockBreakRisk: '断货风险',
@@ -5856,6 +5871,8 @@ export default {
     // Shopping list
     shoppingList: '购物清单',
     shoppingListItems_one: '（{{count}}项）',
+    shoppingListItems_few: '（{{count}}项）',
+    shoppingListItems_many: '（{{count}}项）',
     shoppingListItems_other: '（{{count}}项）',
     shoppingListEmpty: '购物清单为空。点击任意行的购物车图标以添加商品。',
     addToCart: '添加到购物清单',
@@ -5890,6 +5907,8 @@ export default {
     noteOptional: '备注（可选）',
     notePlaceholder: '例如：用于项目X，紧急…',
     addNSpools_one: '添加{{count}}个线轴',
+    addNSpools_few: '添加{{count}}个线轴',
+    addNSpools_many: '添加{{count}}个线轴',
     addNSpools_other: '添加{{count}}个线轴',
     // Cart logistics
     onArrival: '到货时',
@@ -5897,6 +5916,8 @@ export default {
     stockRunsOutBefore: '库存在 {{lt}} 天交货期结束前耗尽。',
     atRate: '按 {{rate}}g/天的速度，您需要',
     moreSpools_one: '再{{count}}个线轴',
+    moreSpools_few: '再{{count}}个线轴',
+    moreSpools_many: '再{{count}}个线轴',
     moreSpools_other: '再{{count}}个线轴',
     bridgeGap: '来弥补缺口。',
     // Permissions

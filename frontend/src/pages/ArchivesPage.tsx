@@ -2700,7 +2700,7 @@ export function ArchivesPage() {
     onSuccess: (count) => {
       queryClient.invalidateQueries({ queryKey: ['archives'] });
       setSelectedIds(new Set());
-      showToast(`${count} archive${count !== 1 ? 's' : ''} deleted`);
+      showToast(t('archives.page.archivesDeleted', { count }));
     },
     onError: () => {
       showToast(t('archives.toast.failedDeleteArchives'), 'error');
@@ -3138,7 +3138,7 @@ export function ArchivesPage() {
               Promise.all(ids.map(id => api.toggleFavorite(id)))
                 .then(() => {
                   queryClient.invalidateQueries({ queryKey: ['archives'] });
-                  showToast(`Toggled favorites for ${ids.length} archive${ids.length !== 1 ? 's' : ''}`);
+                  showToast(t('archives.page.toggledFavorites', { count: ids.length }));
                 })
                 .catch(() => {
                   showToast(t('archives.toast.failedUpdateFavorites'), 'error');
@@ -3199,7 +3199,7 @@ export function ArchivesPage() {
               ) : (
                 <FileSpreadsheet className="w-4 h-4" />
               )}
-              Export
+              {t('common.export')}
             </Button>
             {showExportMenu && (
               <div className="absolute right-0 top-full mt-1 w-48 bg-bambu-dark-secondary border border-bambu-dark-tertiary rounded-lg shadow-xl z-20">
@@ -3377,7 +3377,7 @@ export function ArchivesPage() {
                   setFilterMaterial(e.target.value || null)
                 }
               >
-                <option value="">All Materials</option>
+                <option value="">{t('archives.allMaterials')}</option>
                 {uniqueMaterials.map((m) => (
                   <option key={m} value={m}>
                     {m}
@@ -3407,7 +3407,7 @@ export function ArchivesPage() {
               title={filterFavorites ? t('archives.showAll') : t('archives.showFavoritesOnly')}
             >
               <Star className={`w-4 h-4 ${filterFavorites ? 'fill-yellow-400' : ''}`} />
-              <span className="text-sm hidden md:inline">Favorites</span>
+              <span className="text-sm hidden md:inline">{filterFavorites ? t('archives.showAll') : t('archives.showFavoritesOnly')}</span>
             </button>
             <button
               onClick={() => setHideFailed(!hideFailed)}
@@ -3419,7 +3419,7 @@ export function ArchivesPage() {
               title={hideFailed ? t('archives.showFailedPrints') : t('archives.hideFailedPrints')}
             >
               <AlertCircle className={`w-4 h-4 ${hideFailed ? '' : ''}`} />
-              <span className="text-sm hidden md:inline">Hide Failed</span>
+              <span className="text-sm hidden md:inline">{hideFailed ? t('archives.showFailedPrints') : t('archives.hideFailedPrints')}</span>
             </button>
             <button
               onClick={() => setHideDuplicates(!hideDuplicates)}
@@ -3600,11 +3600,11 @@ export function ArchivesPage() {
               {/* List Header */}
               <div className="grid grid-cols-12 gap-4 px-4 py-3 text-xs text-bambu-gray font-medium">
                 <div className="col-span-1"></div>
-                <div className="col-span-4">Name</div>
-                <div className="col-span-2">Printer</div>
-                <div className="col-span-2">Date</div>
-                <div className="col-span-1">Size</div>
-                <div className="col-span-2 text-right">Actions</div>
+                <div className="col-span-4">{t('archives.list.name')}</div>
+                <div className="col-span-2">{t('archives.list.printer')}</div>
+                <div className="col-span-2">{t('archives.list.date')}</div>
+                <div className="col-span-1">{t('archives.list.size')}</div>
+                <div className="col-span-2 text-right">{t('archives.list.actions')}</div>
               </div>
               {/* List Items */}
               {paginatedArchives?.map((archive) => (
