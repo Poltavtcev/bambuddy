@@ -1,4 +1,4 @@
-import type { TFunction } from 'i18next';
+type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
 
 /** Map backend English maintenance type names to i18n keys under maintenance.types.* */
 const NAME_TO_TYPE_KEY: Record<string, string> = {
@@ -23,12 +23,12 @@ const NAME_TO_TYPE_KEY: Record<string, string> = {
   'Left Nozzle Rail': 'lubricateLeftNozzleRail',
 };
 
-export function getMaintenanceTypeLabel(t: TFunction, name: string): string {
+export function getMaintenanceTypeLabel(t: TranslateFn, name: string): string {
   const key = NAME_TO_TYPE_KEY[name];
   return key ? t(`maintenance.types.${key}`) : name;
 }
 
-export function getMaintenanceTypeDescription(t: TFunction, name: string): string | null {
+export function getMaintenanceTypeDescription(t: TranslateFn, name: string): string | null {
   const key = NAME_TO_TYPE_KEY[name];
   return key ? t(`maintenanceDescriptions.${key}`) : null;
 }
