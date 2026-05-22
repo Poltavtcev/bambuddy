@@ -1096,6 +1096,8 @@ export default {
       historyCleared: '已清除 {{count}} 條歷史紀錄',
       clearHistoryFailed: '清除歷史失敗',
       updateFailed: '更新項目失敗',
+      itemUpdated: '佇列項目已更新',
+      updateItemFailed: '更新佇列項目失敗',
       bulkCancelled: '已取消 {{count}} 個項目',
       bulkCancelFailed: '批次取消項目失敗',
     },
@@ -1895,6 +1897,10 @@ export default {
     disableAuthentication: '停用身份驗證',
     // Additional settings
     configureBambuddy: '設定 Bambuddy',
+    searchPlaceholder: '搜尋設定…',
+    noSearchResults: '沒有符合的設定。',
+    filterTemplates: '篩選範本…',
+    noTemplatesMatch: '沒有符合您篩選條件的範本。',
     systemDefault: '系統預設',
     archiveSettings: '歸檔設定',
     newWindow: '新視窗',
@@ -3879,6 +3885,16 @@ export default {
     staggerTotal: '總計：{{minutes}} 分鐘',
     staggerToPrinters: '分批傳送到 {{count}} 臺印表機',
     gcodeInjection: '注入自動列印G-code',
+    scheduleWhen: '列印時間',
+    scheduleScheduled: '排程',
+    scheduleQueueOnly: '僅排隊',
+    scheduleDateTime: '日期和時間',
+    scheduleInvalidDateTime: '請輸入有效的日期和時間',
+    requirePreviousSuccess: '僅在前次列印成功時開始',
+    autoPowerOffAfter: '完成後關閉印表機電源',
+    scheduleHelpAsap: '印表機閒置後將立即開始列印。',
+    scheduleHelpScheduled: '如果印表機閒置，將在預定時間開始列印。如果忙碌，將等待印表機可用。',
+    scheduleHelpManual: '列印將被暫存但不會自動開始。使用「開始」按鈕將其釋放到佇列。',
   },
 
   // Backup
@@ -4885,6 +4901,14 @@ export default {
 
   // External Links
   externalLinks: {
+    title: '側邊欄連結',
+    addLink: '新增連結',
+    description: '向側邊欄導覽新增外部連結。拖曳以重新排序。',
+    clickToAdd: '點擊「新增連結」以新增',
+    editLink: '編輯連結',
+    addExternalLink: '新增外部連結',
+    deleteTitle: '刪除連結',
+    deleteMessage: '確定要刪除「{{name}}」嗎？此操作無法復原。',
     noLinksConfigured: '未設定外部連結',
     deleteLink: '刪除連結',
     removeCustomIcon: '移除自訂圖示',

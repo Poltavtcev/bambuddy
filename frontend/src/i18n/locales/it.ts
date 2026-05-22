@@ -1096,6 +1096,8 @@ export default {
       historyCleared: 'Cancellati {{count}} elementi cronologia',
       clearHistoryFailed: 'Svuotamento cronologia non riuscito',
       updateFailed: 'Aggiornamento elementi non riuscito',
+      itemUpdated: 'Elemento coda aggiornato',
+      updateItemFailed: 'Aggiornamento elemento coda non riuscito',
       bulkCancelled: 'Annullati {{count}} elementi',
       bulkCancelFailed: 'Annullamento elementi non riuscito',
     },
@@ -1851,6 +1853,10 @@ export default {
     disableAuthentication: 'Disabilita autenticazione',
     // Additional settings
     configureBambuddy: 'Configura Bambuddy',
+    searchPlaceholder: 'Cerca impostazioni…',
+    noSearchResults: 'Nessuna impostazione corrispondente.',
+    filterTemplates: 'Filtra modelli…',
+    noTemplatesMatch: 'Nessun modello corrisponde al filtro.',
     systemDefault: 'Predefinito di sistema',
     archiveSettings: 'Impostazioni archivio',
     newWindow: 'Nuova finestra',
@@ -3879,6 +3885,16 @@ export default {
     staggerTotal: 'totale: {{minutes}} min',
     staggerToPrinters: 'Scagliona a {{count}} stampanti',
     gcodeInjection: 'Inietta G-code auto-stampa',
+    scheduleWhen: 'Quando stampare',
+    scheduleScheduled: 'Programmato',
+    scheduleQueueOnly: 'Solo coda',
+    scheduleDateTime: 'Data e ora',
+    scheduleInvalidDateTime: 'Inserisci una data e un\'ora valide',
+    requirePreviousSuccess: 'Avvia solo se la stampa precedente è riuscita',
+    autoPowerOffAfter: 'Spegni la stampante al termine',
+    scheduleHelpAsap: 'La stampa inizierà non appena la stampante sarà libera.',
+    scheduleHelpScheduled: 'La stampa inizierà all\'ora programmata se la stampante è libera. Se occupata, attenderà che diventi disponibile.',
+    scheduleHelpManual: 'La stampa sarà preparata ma non partirà automaticamente. Usa il pulsante Avvia per rilasciarla in coda.',
   },
 
   // Backup
@@ -4886,6 +4902,14 @@ export default {
 
   // External Links
   externalLinks: {
+    title: 'Link della barra laterale',
+    addLink: 'Aggiungi link',
+    description: 'Aggiungi link esterni alla navigazione della barra laterale. Trascina per riordinare.',
+    clickToAdd: 'Fai clic su "Aggiungi link" per aggiungerne uno',
+    editLink: 'Modifica link',
+    addExternalLink: 'Aggiungi link esterno',
+    deleteTitle: 'Elimina link',
+    deleteMessage: 'Sei sicuro di voler eliminare "{{name}}"? Questa azione non può essere annullata.',
     noLinksConfigured: 'Nessun link esterno configurato',
     deleteLink: 'Elimina link',
     removeCustomIcon: 'Rimuovi icona personalizzata',

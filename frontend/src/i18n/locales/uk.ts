@@ -1080,6 +1080,8 @@ export default {
       historyCleared: 'Очищено елементів історії: {{count}}',
       clearHistoryFailed: 'Не вдалося очистити історію',
       updateFailed: 'Не вдалося оновити елементи',
+      itemUpdated: 'Елемент черги оновлено',
+      updateItemFailed: 'Не вдалося оновити елемент черги',
       bulkCancelled: 'Скасовано елементів: {{count}}',
       bulkCancelFailed: 'Не вдалося скасувати елементи',
     },
@@ -1858,6 +1860,10 @@ export default {
     disableAuthentication: 'Вимкнути автентифікацію',
     // Additional settings
     configureBambuddy: 'Налаштувати Bambuddy',
+    searchPlaceholder: 'Пошук у налаштуваннях…',
+    noSearchResults: 'Немає відповідних налаштувань.',
+    filterTemplates: 'Фільтр шаблонів…',
+    noTemplatesMatch: 'Жоден шаблон не відповідає фільтру.',
     systemDefault: 'Системне за замовчуванням',
     archiveSettings: 'Налаштування архіву',
     newWindow: 'Нове вікно',
@@ -3822,6 +3828,16 @@ spoolman: {
     staggerTotal: 'усього: {{minutes}} хв',
     staggerToPrinters: 'Рознести на {{count}} принтерів',
     gcodeInjection: 'Вставити G-code автодруку',
+    scheduleWhen: 'Коли друкувати',
+    scheduleScheduled: 'За розкладом',
+    scheduleQueueOnly: 'Лише в чергу',
+    scheduleDateTime: 'Дата та час',
+    scheduleInvalidDateTime: 'Введіть коректну дату та час',
+    requirePreviousSuccess: 'Запускати лише якщо попередній друк успішний',
+    autoPowerOffAfter: 'Вимкнути живлення принтера після завершення',
+    scheduleHelpAsap: 'Друк розпочнеться, щойно принтер буде вільний.',
+    scheduleHelpScheduled: 'Друк розпочнеться у запланований час, якщо принтер вільний. Якщо зайнятий — очікуватиме, доки не звільниться.',
+    scheduleHelpManual: 'Друк буде підготовлено, але не запуститься автоматично. Натисніть «Запустити», щоб додати його до черги.',
   },
 
   // Резервне копіювання
@@ -4827,6 +4843,14 @@ spoolman: {
 
   // External Links
   externalLinks: {
+    title: 'Посилання бічної панелі',
+    addLink: 'Додати посилання',
+    description: 'Додайте зовнішні посилання до навігації бічної панелі. Перетягніть, щоб змінити порядок.',
+    clickToAdd: 'Натисніть «Додати посилання», щоб додати',
+    editLink: 'Редагувати посилання',
+    addExternalLink: 'Додати зовнішнє посилання',
+    deleteTitle: 'Видалити посилання',
+    deleteMessage: 'Ви впевнені, що хочете видалити «{{name}}»? Цю дію не можна скасувати.',
     noLinksConfigured: 'Зовнішні посилання не налаштовано',
     deleteLink: 'Видалити посилання',
     removeCustomIcon: 'Видалити власну іконку',

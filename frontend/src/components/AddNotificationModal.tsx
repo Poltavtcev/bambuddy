@@ -395,7 +395,7 @@ export function AddNotificationModal({ provider, onClose }: AddNotificationModal
               {testResult.success ? (
                 <>
                   <CheckCircle className="w-5 h-5" />
-                  <span>{testResult.message}</span>
+                  <span>{t('settings.testSuccess')}</span>
                 </>
               ) : (
                 <>

@@ -1096,6 +1096,8 @@ export default {
       historyCleared: '{{count}} Verlaufselement(e) gelöscht',
       clearHistoryFailed: 'Verlauf konnte nicht gelöscht werden',
       updateFailed: 'Elemente konnten nicht aktualisiert werden',
+      itemUpdated: 'Warteschlangenelement aktualisiert',
+      updateItemFailed: 'Warteschlangenelement konnte nicht aktualisiert werden',
       bulkCancelled: '{{count}} Element(e) abgebrochen',
       bulkCancelFailed: 'Elemente konnten nicht abgebrochen werden',
     },
@@ -1894,6 +1896,10 @@ export default {
     disableAuthentication: 'Authentifizierung deaktivieren',
     // Additional settings
     configureBambuddy: 'Bambuddy konfigurieren',
+    searchPlaceholder: 'Einstellungen durchsuchen…',
+    noSearchResults: 'Keine passenden Einstellungen.',
+    filterTemplates: 'Vorlagen filtern…',
+    noTemplatesMatch: 'Keine Vorlagen entsprechen Ihrem Filter.',
     systemDefault: 'Systemstandard',
     archiveSettings: 'Archiv-Einstellungen',
     newWindow: 'Neues Fenster',
@@ -3891,6 +3897,16 @@ export default {
     staggerTotal: 'insgesamt: {{minutes}} Min.',
     staggerToPrinters: 'Gestaffelt an {{count}} Drucker senden',
     gcodeInjection: 'Auto-Print G-code einfügen',
+    scheduleWhen: 'Wann drucken',
+    scheduleScheduled: 'Geplant',
+    scheduleQueueOnly: 'Nur Warteschlange',
+    scheduleDateTime: 'Datum & Uhrzeit',
+    scheduleInvalidDateTime: 'Bitte geben Sie ein gültiges Datum und eine gültige Uhrzeit ein',
+    requirePreviousSuccess: 'Nur starten, wenn der vorherige Druck erfolgreich war',
+    autoPowerOffAfter: 'Drucker nach Abschluss ausschalten',
+    scheduleHelpAsap: 'Der Druck startet, sobald der Drucker frei ist.',
+    scheduleHelpScheduled: 'Der Druck startet zur geplanten Zeit, wenn der Drucker frei ist. Wenn er beschäftigt ist, wartet er, bis er verfügbar wird.',
+    scheduleHelpManual: 'Der Druck wird vorbereitet, startet aber nicht automatisch. Verwenden Sie die Schaltfläche Start, um ihn in die Warteschlange zu geben.',
   },
 
   // Backup
@@ -4897,6 +4913,14 @@ export default {
 
   // External Links
   externalLinks: {
+    title: 'Seitenleisten-Links',
+    addLink: 'Link hinzufügen',
+    description: 'Externe Links zur Seitenleisten-Navigation hinzufügen. Zum Neuordnen ziehen.',
+    clickToAdd: 'Klicken Sie auf „Link hinzufügen“, um einen hinzuzufügen',
+    editLink: 'Link bearbeiten',
+    addExternalLink: 'Externen Link hinzufügen',
+    deleteTitle: 'Link löschen',
+    deleteMessage: 'Möchten Sie „{{name}}“ wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.',
     noLinksConfigured: 'Keine externen Links konfiguriert',
     deleteLink: 'Link löschen',
     removeCustomIcon: 'Benutzerdefiniertes Symbol entfernen',

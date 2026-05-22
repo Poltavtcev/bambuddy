@@ -1096,6 +1096,8 @@ export default {
       historyCleared: 'Cleared {{count}} history item(s)',
       clearHistoryFailed: 'Failed to clear history',
       updateFailed: 'Failed to update items',
+      itemUpdated: 'Queue item updated',
+      updateItemFailed: 'Failed to update queue item',
       bulkCancelled: 'Cancelled {{count}} item(s)',
       bulkCancelFailed: 'Failed to cancel items',
     },
@@ -1897,6 +1899,10 @@ export default {
     disableAuthentication: 'Disable Authentication',
     // Additional settings
     configureBambuddy: 'Configure Bambuddy',
+    searchPlaceholder: 'Search settings…',
+    noSearchResults: 'No matching settings.',
+    filterTemplates: 'Filter templates…',
+    noTemplatesMatch: 'No templates match your filter.',
     systemDefault: 'System Default',
     archiveSettings: 'Archive Settings',
     newWindow: 'New Window',
@@ -3903,6 +3909,16 @@ export default {
     staggerTotal: 'total: {{minutes}} min',
     staggerToPrinters: 'Stagger to {{count}} printers',
     gcodeInjection: 'Inject auto-print G-code',
+    scheduleWhen: 'When to print',
+    scheduleScheduled: 'Scheduled',
+    scheduleQueueOnly: 'Queue Only',
+    scheduleDateTime: 'Date & Time',
+    scheduleInvalidDateTime: 'Please enter a valid date and time',
+    requirePreviousSuccess: 'Only start if previous print succeeded',
+    autoPowerOffAfter: 'Power off printer when done',
+    scheduleHelpAsap: 'Print will start as soon as the printer is idle.',
+    scheduleHelpScheduled: 'Print will start at the scheduled time if the printer is idle. If busy, it will wait until the printer becomes available.',
+    scheduleHelpManual: "Print will be staged but won't start automatically. Use the Start button to release it to the queue.",
   },
 
   // Backup
@@ -4910,6 +4926,14 @@ export default {
 
   // External Links
   externalLinks: {
+    title: 'Sidebar Links',
+    addLink: 'Add Link',
+    description: 'Add external links to the sidebar navigation. Drag to reorder.',
+    clickToAdd: 'Click "Add Link" to add one',
+    editLink: 'Edit Link',
+    addExternalLink: 'Add External Link',
+    deleteTitle: 'Delete Link',
+    deleteMessage: 'Are you sure you want to delete "{{name}}"? This action cannot be undone.',
     noLinksConfigured: 'No external links configured',
     deleteLink: 'Delete Link',
     removeCustomIcon: 'Remove custom icon',
