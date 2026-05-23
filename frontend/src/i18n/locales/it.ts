@@ -3437,6 +3437,9 @@ export default {
   slice: {
     title: 'Slicing modello',
     action: 'Slice',
+    actionAll: 'Slicia tutti i {{count}} piatti',
+    actionAllTitle: 'Slicia tutti i piatti in un unico output multi-piatto (un solo archivio). La selezione del filamento copre ogni slot definito dal progetto.',
+    allPlatesToggle: 'Slicia tutti i {{count}} piatti',
     slicing: 'Slicing…',
     printer: 'Profilo stampante',
     process: 'Profilo processo',
@@ -3463,6 +3466,7 @@ export default {
     queuedToast: 'In coda: {{name}} – {{elapsed}}',
     runningToast: 'Slicing {{name}} – {{elapsed}}',
     runningWithProgress: '{{name}} – {{stage}} ({{percent}}%) – {{elapsed}}',
+    runningWithProgressMultiPlate: 'Piatto {{plateIndex}} di {{plateCount}} • {{name}} – {{stage}} ({{percent}}%) – {{elapsed}}',
     completedToast: '{{name}} sezionato',
     failedTitle: 'Slicing fallito',
     failedToast: 'Slicing di {{name}} fallito: {{detail}}',

@@ -1420,6 +1420,12 @@ export interface SliceJobProgress {
   plate_index: number;
   plate_count: number;
   updated_at: number;
+  /** When the backend is in the cross-class slice-all loop (#1493), each
+   *  per-plate sub-slice's progress is augmented with the loop position
+   *  so the toast can show "Plate 2 of 5 — Generating G-code 47%". The
+   *  fields are absent on a single-plate slice. */
+  multi_plate_index?: number;
+  multi_plate_count?: number;
 }
 
 export interface SliceJobState {

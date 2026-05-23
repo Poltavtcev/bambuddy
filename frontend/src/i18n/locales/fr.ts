@@ -3438,6 +3438,9 @@ export default {
   slice: {
     title: 'Slicer le modèle',
     action: 'Slicer',
+    actionAll: 'Slicer les {{count}} plateaux',
+    actionAllTitle: "Slicer tous les plateaux dans une sortie multi-plateaux (une seule archive). La sélection de filament couvre chaque emplacement défini par le projet.",
+    allPlatesToggle: 'Slicer les {{count}} plateaux',
     slicing: 'Découpage…',
     printer: 'Profil d\'imprimante',
     process: 'Profil de processus',
@@ -3464,6 +3467,7 @@ export default {
     queuedToast: 'En attente : {{name}} – {{elapsed}}',
     runningToast: 'Découpage {{name}} – {{elapsed}}',
     runningWithProgress: '{{name}} – {{stage}} ({{percent}} %) – {{elapsed}}',
+    runningWithProgressMultiPlate: 'Plateau {{plateIndex}} sur {{plateCount}} • {{name}} – {{stage}} ({{percent}} %) – {{elapsed}}',
     completedToast: '{{name}} découpé',
     failedTitle: 'Échec du découpage',
     failedToast: 'Échec du découpage de {{name}} : {{detail}}',
