@@ -42,6 +42,10 @@ from backend.app.models.spoolman_slot_assignment import SpoolmanSlotAssignment
 from backend.app.models.user import User
 from backend.app.schemas.spool import SpoolKProfileBase
 from backend.app.schemas.spoolman import SpoolmanFilamentPatch, SpoolmanSlotAssignmentEnriched
+from backend.app.services.location_service import (
+    enrich_spool_dicts_with_location_id,
+    resolve_spoolman_location_string,
+)
 from backend.app.services.printer_manager import printer_manager
 from backend.app.services.spoolman import (
     SpoolmanClient,
@@ -305,6 +309,7 @@ class SpoolmanInventoryCreate(BaseModel):
     note: str | None = Field(None, max_length=1000)
     cost_per_kg: float | None = Field(None, ge=0.0, le=1_000_000.0)
     storage_location: str | None = Field(None, max_length=255)
+    location_id: int | None = Field(None, gt=0)
     # BambuStudio slicer preset for this spool. Spoolman has no native field
     # for this, so we persist it under the bambu_slicer_filament[_name] keys
     # in the spool's extra dict and read it back in _map_spoolman_spool.
@@ -347,6 +352,7 @@ class SpoolmanInventoryUpdate(BaseModel):
     tag_uid: str | None = Field(None, min_length=8, max_length=30, pattern=r"^[0-9A-Fa-f]+$")
     tray_uuid: str | None = Field(None, min_length=32, max_length=32, pattern=r"^[0-9A-Fa-f]+$")
     storage_location: str | None = Field(None, max_length=255)
+    location_id: int | None = Field(None, gt=0)
     # BambuStudio slicer preset — persisted to Spoolman extra dict (see Create
     # schema). Pass an empty string to clear; null/omitted leaves unchanged.
     slicer_filament: str | None = Field(None, max_length=128)
@@ -449,6 +455,7 @@ async def list_spools(
         for m in mapped:
             m["k_profiles"] = kp_by_spool.get(m["id"], [])
 
+    await enrich_spool_dicts_with_location_id(db, mapped)
     return mapped
 
 
@@ -470,6 +477,7 @@ async def get_spool(
 
     kp_result = await db.execute(select(SpoolmanKProfile).where(SpoolmanKProfile.spoolman_spool_id == spool_id))
     mapped["k_profiles"] = [_k_profile_to_dict(kp) for kp in kp_result.scalars().all()]
+    await enrich_spool_dicts_with_location_id(db, [mapped])
     return mapped
 
 
@@ -505,6 +513,18 @@ async def create_spool(
     client = await _get_client(db)
     filament_id = await _resolve_filament_id(data, client)
 
+    storage_location = data.storage_location
+    if "location_id" in data.model_fields_set or "storage_location" in data.model_fields_set:
+        try:
+            storage_location, _ = await resolve_spoolman_location_string(
+                db,
+                location_id=data.location_id,
+                storage_location=data.storage_location,
+                fields_set=set(data.model_fields_set),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     remaining = max(0.0, data.label_weight - data.weight_used)
     try:
         async with _translate_spoolman_errors():
@@ -512,7 +532,7 @@ async def create_spool(
                 filament_id=filament_id,
                 remaining_weight=remaining,
                 comment=data.note or None,
-                location=data.storage_location or None,
+                location=storage_location or None,
             )
     except HTTPException as exc:
         if exc.status_code == 404 and data.spoolman_filament_id is not None:
@@ -579,6 +599,18 @@ async def bulk_create_spools(
             ) from exc
         raise
 
+    storage_location = data.storage_location
+    if "location_id" in data.model_fields_set or "storage_location" in data.model_fields_set:
+        try:
+            storage_location, _ = await resolve_spoolman_location_string(
+                db,
+                location_id=data.location_id,
+                storage_location=data.storage_location,
+                fields_set=set(data.model_fields_set),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     remaining = max(0.0, data.label_weight - data.weight_used)
     created: list[dict] = []
     failures: list[str] = []
@@ -588,7 +620,7 @@ async def bulk_create_spools(
                 filament_id=filament_id,
                 remaining_weight=remaining,
                 comment=data.note or None,
-                location=data.storage_location or None,
+                location=storage_location or None,
             )
         except (SpoolmanUnavailableError, SpoolmanClientError, SpoolmanNotFoundError) as exc:
             logger.warning("Bulk spool creation: one spool failed: %s", exc)
@@ -677,8 +709,18 @@ async def update_spool(
         synthetic_used = float(current.get("used_weight") or 0)
     weight_used = data.weight_used if data.weight_used is not None else synthetic_used
     note = data.note if data.note is not None else current.get("comment")
-    storage_location_changed = "storage_location" in data.model_fields_set
-    storage_location = data.storage_location if storage_location_changed else None
+    storage_location_changed = "storage_location" in data.model_fields_set or "location_id" in data.model_fields_set
+    storage_location = data.storage_location if "storage_location" in data.model_fields_set else None
+    if storage_location_changed:
+        try:
+            storage_location, _ = await resolve_spoolman_location_string(
+                db,
+                location_id=data.location_id,
+                storage_location=storage_location,
+                fields_set=set(data.model_fields_set),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     color_hex = rgba[:6]
 
