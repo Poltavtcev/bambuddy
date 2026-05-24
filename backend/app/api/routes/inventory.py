@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -42,13 +43,13 @@ from backend.app.schemas.spool import (
 )
 from backend.app.schemas.spool_usage import SpoolUsageHistoryResponse
 from backend.app.services.location_service import (
+    DUPLICATE_LOCATION_NAME,
     assign_location_name,
     count_internal_spools_at_location,
     get_location_by_id,
     get_location_by_name,
     prepare_internal_spool_payload,
     rename_location as rename_location_record,
-    sync_locations_from_spoolman,
 )
 from backend.app.services.spoolman import SpoolmanClient, get_spoolman_client, init_spoolman_client
 from backend.app.utils.filament_ids import (
@@ -696,10 +697,6 @@ async def list_locations(
 ):
     """List all storage locations with spool counts."""
     settings = await _load_settings_map(db)
-    client = await _ensure_spoolman_client(settings)
-    if client:
-        if await sync_locations_from_spoolman(db, client):
-            await db.commit()
     result = await db.execute(select(Location).order_by(Location.name))
     locations = list(result.scalars().all())
     counts = await _spool_counts_for_locations(db, locations, settings)
@@ -715,11 +712,15 @@ async def create_location(
     """Create a storage location."""
     existing = await get_location_by_name(db, data.name)
     if existing:
-        raise HTTPException(status_code=409, detail="A location with this name already exists")
+        raise HTTPException(status_code=409, detail=DUPLICATE_LOCATION_NAME)
     location = Location(identifier=data.identifier)
     assign_location_name(location, data.name)
     db.add(location)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=DUPLICATE_LOCATION_NAME) from exc
     await db.refresh(location)
     await ws_manager.broadcast({"type": "inventory_changed"})
     return _location_to_response(location, 0)
@@ -755,7 +756,11 @@ async def update_location(
             except Exception as exc:
                 logger.warning("Spoolman location rename failed for %s -> %s: %s", old_name, location.name, exc)
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=DUPLICATE_LOCATION_NAME) from exc
     await db.refresh(location)
     settings = await _load_settings_map(db)
     counts = await _spool_counts_for_locations(db, [location], settings)

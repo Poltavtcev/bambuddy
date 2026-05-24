@@ -486,10 +486,6 @@ function InventoryPage({ spoolmanMode = false, spoolmanModeReady = true }: { spo
   const [categoryFilter, setCategoryFilter] = useState('');
   const [spoolFilter, setSpoolFilter] = useState('');
   const [stockFilter, setStockFilter] = useState<'all' | 'stock' | 'configured'>('all');
-  // #1400: storage-location dropdown. Uses the sentinel `__none__` for the
-  // "no storage location set" group, same pattern as the category filter so
-  // users can find unfiled spools.
-  const [storageLocationFilter, setStorageLocationFilter] = useState('');
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [sortState, setSortState] = useState<SortState>(loadSortState);
@@ -537,18 +533,14 @@ function InventoryPage({ spoolmanMode = false, spoolmanModeReady = true }: { spo
     queryFn: api.getLocations,
   });
 
-  // Deep-link: filter by ?location_id=
+  // Deep-link / filter: ?location_id=<id> or ?location_id=__none__
   const _rawLocationParam = searchParams.get('location_id');
-  const deepLinkLocationId =
-    _rawLocationParam && /^\d+$/.test(_rawLocationParam) && Number(_rawLocationParam) > 0
-      ? _rawLocationParam
-      : null;
-
-  useEffect(() => {
-    if (deepLinkLocationId) {
-      setStorageLocationFilter(deepLinkLocationId);
-    }
-  }, [deepLinkLocationId]);
+  const storageLocationFilter =
+    _rawLocationParam === '__none__'
+      ? '__none__'
+      : _rawLocationParam && /^\d+$/.test(_rawLocationParam) && Number(_rawLocationParam) > 0
+        ? _rawLocationParam
+        : '';
 
   // Deep-link: open edit modal for ?spool=<id>
   // Prefer the already-loaded spool list (no extra API call); fall back to a
@@ -972,6 +964,17 @@ function InventoryPage({ spoolmanMode = false, spoolmanModeReady = true }: { spo
   // Reset page on filter changes
   const resetPage = () => setPageIndex(0);
 
+  const setStorageLocationFilter = useCallback((value: string) => {
+    setSearchParams((prev) => {
+      prev.delete('location_id');
+      if (value) {
+        prev.set('location_id', value);
+      }
+      return prev;
+    }, { replace: true });
+    resetPage();
+  }, [setSearchParams]);
+
   // Unique values for filter dropdowns
   const uniqueMaterials = [...new Set(spools?.map((s) => s.material) || [])].sort();
   const uniqueBrands = [...new Set(spools?.map((s) => s.brand).filter(Boolean) || [])].sort() as string[];
@@ -1110,9 +1113,12 @@ function InventoryPage({ spoolmanMode = false, spoolmanModeReady = true }: { spo
     setBrandFilter('');
     setCategoryFilter('');
     setSpoolFilter('');
-    setStorageLocationFilter('');
     setStockFilter('all');
     setSearch('');
+    setSearchParams((prev) => {
+      prev.delete('location_id');
+      return prev;
+    }, { replace: true });
     resetPage();
   };
 
@@ -1564,7 +1570,7 @@ function InventoryPage({ spoolmanMode = false, spoolmanModeReady = true }: { spo
         {(storageLocations.length > 0 || storageLocationFilter) && (
           <select
             value={storageLocationFilter}
-            onChange={(e) => { setStorageLocationFilter(e.target.value); resetPage(); }}
+            onChange={(e) => { setStorageLocationFilter(e.target.value); }}
             className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer focus:outline-none ${
               storageLocationFilter
                 ? 'bg-bambu-green/20 text-bambu-green border-bambu-green/30'
