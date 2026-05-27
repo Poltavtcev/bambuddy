@@ -148,7 +148,7 @@ def _render_uncompressed(template, data):
         buf = _io.BytesIO()
         c = _rl_canvas.Canvas(buf, pagesize=(page_w, page_h), pageCompression=0)
         for d in data:
-            _draw_label(c, 0, 0, page_w, page_h, d)
+            _draw_label(c, 0, 0, page_w, page_h, d, template=template)
             c.showPage()
         c.save()
         return buf.getvalue()
@@ -179,7 +179,7 @@ def _render_uncompressed(template, data):
             col = idx % cols
             x = left_mm * _mm + col * (label_w + col_gap_mm * _mm)
             y = page_h - top_mm * _mm - (row + 1) * label_h
-            _draw_label(c, x, y, label_w, label_h, d)
+            _draw_label(c, x, y, label_w, label_h, d, template=template)
         c.showPage()
     c.save()
     return buf.getvalue()
@@ -235,6 +235,37 @@ def test_hex_color_code_rendered_when_rgba_set():
 
     pdf = _render_uncompressed("box_40x30", data)
     assert b"#F5E6D3" in pdf, "40x30 box label must render the hex colour code"
+
+
+def test_box_40x30_uses_spoolman_style_layout():
+    """40×30 labels follow the Spoolman-style layout (brand, material bar,
+    colour name, print temps, QR) rather than the roomy swatch layout."""
+    data = [
+        LabelData(
+            spool_id=2,
+            name="Basic Beige",
+            material="PETG",
+            brand="Professional Lab",
+            subtype="Basic",
+            rgba="DFD6CBFF",
+            color_name="Beige",
+            nozzle_temp_min=230,
+            nozzle_temp_max=250,
+            bed_temp_min=80,
+            bed_temp_max=90,
+            deeplink_url="https://example.test/inventory?spool=2",
+        )
+    ]
+    pdf = _render_uncompressed("box_40x30", data)
+    assert b"Professional Lab" in pdf
+    assert b"PETG Basic" in pdf
+    assert b"Beige" in pdf
+    assert b"Nozzle:" in pdf
+    assert b"230-250" in pdf
+    assert b"Bed Temp:" in pdf
+    assert b"80-90" in pdf
+    assert b"Flow Ratio:" in pdf
+    assert b"#DFD6CB" in pdf
 
 
 def test_hex_color_code_skipped_when_rgba_invalid():

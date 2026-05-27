@@ -48,13 +48,13 @@ const TEMPLATE_OPTIONS: TemplateOption[] = [
     value: 'box_40x30',
     i18nKey: 'box40x30',
     fallbackLabel: 'Box label (40 × 30 mm)',
-    fallbackHint: 'Single label per page; common DK/Brother roll size, good for filament-bag and storage-bin labels.',
+    fallbackHint: 'Single label per page; Spoolman-style layout with brand, material bar, colour, temps, and QR.',
   },
   {
     value: 'box_40x30_a4',
     i18nKey: 'box40x30A4',
     fallbackLabel: 'Box label (40 × 30 mm) — A4 sheet × 36',
-    fallbackHint: 'A4 sheet stock; 36 labels per page. Uses the same margins as Avery L7160.',
+    fallbackHint: 'A4 sheet stock; 36 Spoolman-style labels per page (same margins as Avery L7160).',
   },
   {
     value: 'box_62x29',

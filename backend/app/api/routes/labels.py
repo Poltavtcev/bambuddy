@@ -13,6 +13,7 @@ scan jumps straight back into Bambuddy at that spool's row.
 from __future__ import annotations
 
 import io
+import json
 import logging
 from typing import Literal
 
@@ -84,6 +85,36 @@ async def _resolve_deeplink_base(request: Request, db: AsyncSession) -> str:
     return f"{request.url.scheme}://{request.url.netloc}"
 
 
+def _parse_temp_range(raw) -> tuple[int | None, int | None]:
+    """Parse Spoolman-style temperature values (int, range string, or list)."""
+    if raw is None:
+        return None, None
+    if isinstance(raw, (list, tuple)):
+        nums = [int(v) for v in raw if str(v).strip().lstrip("-").isdigit()]
+        if len(nums) >= 2:
+            return min(nums[0], nums[1]), max(nums[0], nums[1])
+        if len(nums) == 1:
+            return nums[0], nums[0]
+        return None, None
+    if isinstance(raw, str):
+        text = raw.strip().replace("°C", "").replace("°", "")
+        if "-" in text:
+            left, right = text.split("-", 1)
+            try:
+                return int(left.strip()), int(right.strip())
+            except ValueError:
+                pass
+        if text.isdigit() or (text.startswith("-") and text[1:].isdigit()):
+            value = int(text)
+            return value, value
+        return None, None
+    try:
+        value = int(raw)
+        return value, value
+    except (TypeError, ValueError):
+        return None, None
+
+
 def _spool_to_label_data(spool: Spool, deeplink_base: str) -> LabelData:
     name = spool.color_name or spool.slicer_filament_name or f"{spool.brand or ''} {spool.material}".strip()
     return LabelData(
@@ -96,6 +127,9 @@ def _spool_to_label_data(spool: Spool, deeplink_base: str) -> LabelData:
         extra_colors=_split_extra_colors(spool.extra_colors),
         storage_location=getattr(spool, "storage_location", None),
         deeplink_url=f"{deeplink_base}/inventory?spool={spool.id}",
+        color_name=spool.color_name,
+        nozzle_temp_min=spool.nozzle_temp_min,
+        nozzle_temp_max=spool.nozzle_temp_max,
     )
 
 
@@ -113,23 +147,52 @@ def _spoolman_dict_to_label_data(s: dict, deeplink_base: str) -> LabelData:
     color_hex = filament.get("color_hex")
     rgba = color_hex.lstrip("#") if isinstance(color_hex, str) else None
 
+    # Derive subtype the same way as the Spoolman inventory mapper.
+    subtype: str | None = None
+    if material and fname.startswith(material):
+        subtype = fname[len(material) :].strip() or None
+    elif fname:
+        subtype = fname
+
+    spool_extra = s.get("extra") or {}
+    if isinstance(spool_extra, str):
+        try:
+            spool_extra = json.loads(spool_extra) if spool_extra.strip() else {}
+        except json.JSONDecodeError:
+            spool_extra = {}
+    stored_color_name = None
+    if isinstance(spool_extra, dict):
+        raw_color = spool_extra.get("bambu_color_name")
+        if isinstance(raw_color, str) and raw_color.strip():
+            stored_color_name = raw_color.strip()
+
+    color_name = stored_color_name or (filament.get("color_name") or None) or subtype
+
+    nozzle_min, nozzle_max = _parse_temp_range(filament.get("settings_extruder_temp"))
+    bed_min, bed_max = _parse_temp_range(filament.get("settings_bed_temp"))
+
     multi_colors = filament.get("multi_color_hexes")
-    extra: list[str] | None = None
+    extra_colors: list[str] | None = None
     if isinstance(multi_colors, str) and multi_colors.strip():
-        extra = [tok.strip().lstrip("#") for tok in multi_colors.split(",") if tok.strip()]
+        extra_colors = [tok.strip().lstrip("#") for tok in multi_colors.split(",") if tok.strip()]
     elif isinstance(multi_colors, list):
-        extra = [str(t).strip().lstrip("#") for t in multi_colors if str(t).strip()]
+        extra_colors = [str(t).strip().lstrip("#") for t in multi_colors if str(t).strip()]
 
     return LabelData(
         spool_id=int(s.get("id", 0)),
         name=fname or material or "Spool",
         material=material or "",
         brand=brand,
-        subtype=None,
+        subtype=subtype,
         rgba=rgba,
-        extra_colors=extra,
+        extra_colors=extra_colors,
         storage_location=s.get("location"),
         deeplink_url=f"{deeplink_base}/inventory?spool={int(s.get('id', 0))}",
+        color_name=color_name,
+        nozzle_temp_min=nozzle_min,
+        nozzle_temp_max=nozzle_max,
+        bed_temp_min=bed_min,
+        bed_temp_max=bed_max,
     )
 
 

@@ -7,11 +7,10 @@ Six fixed templates:
   Smaller variant — the visible window in the holder. One label per page.
 - ``ams_holder_75x55`` — 75×55 mm single label, fits the cardstock-insert
   variant of the same holder. Roomier — swatch + QR + full text column.
-- ``box_40x30``  — 40×30 mm single label, common DK/Brother roll size and a
-  good fit for filament-bag/storage-bin labels (#809 follow-up). Roomy
-  layout — swatch, QR, full text column with hex code.
-- ``box_40x30_a4`` — A4 sheet, 40×30 mm × 36 per sheet. Same Avery-style
-  margins as ``avery_l7160`` (15.15 mm top, 7 mm left, 2.5 mm column gap).
+- ``box_40x30``  — 40×30 mm single label, common DK/Brother roll size. Spoolman-
+  style layout: brand + material bar + colour name + print temps + QR.
+- ``box_40x30_a4`` — A4 sheet, 40×30 mm × 36 per sheet. Same layout as
+  ``box_40x30``; Avery L7160 margins (15.15 mm top, 7 mm left, 2.5 mm gap).
 - ``box_62x29``  — 62×29 mm single label, sized for Brother PT/QL and Dymo
   generic small labels. One label per page.
 - ``avery_5160`` — US Letter sheet, 25.4×66.7 mm × 30 per sheet.
@@ -25,10 +24,9 @@ The renderer is decoupled from the Spool model: callers build a ``LabelData``
 list from whatever source (local DB, Spoolman, future) so the same code path
 works in both modes.
 
-Layout principle, taken from the issue's user need (`#809`): the **spool ID**
-is the most-recognisable field at arm's length and dominates the layout. Other
-fields (brand, material, name, storage location) fill remaining space; the QR
-code provides the round-trip back to ``/inventory?spool=<id>``.
+Layout principle (#809): on most templates the **spool ID** dominates; the
+40×30 presets instead follow the Spoolman-style layout (brand, material bar,
+colour name, print settings, QR) for bag/box labels.
 """
 
 from __future__ import annotations
@@ -71,6 +69,17 @@ class LabelData:
     extra_colors: list[str] | None = None  # additional hex colours (no '#')
     storage_location: str | None = None
     deeplink_url: str = ""  # what the QR encodes; caller composes it
+    # Spoolman-style 40×30 fields (optional — blank when unknown).
+    color_name: str | None = None
+    nozzle_temp_min: int | None = None
+    nozzle_temp_max: int | None = None
+    bed_temp_min: int | None = None
+    bed_temp_max: int | None = None
+    flow_ratio: str | None = None
+    td: str | None = None
+
+
+_SPOOLMAN_40x30_TEMPLATES = frozenset({"box_40x30", "box_40x30_a4"})
 
 
 # ── Colour helpers ───────────────────────────────────────────────────────────
@@ -120,6 +129,20 @@ def _hex_code_label(rgba: str | None) -> str:
     if not all(c in "0123456789abcdefABCDEF" for c in rgb):
         return ""
     return f"#{rgb.upper()}"
+
+
+def _format_temp_range(min_t: int | None, max_t: int | None) -> str:
+    """Render a nozzle/bed range like ``230-250°C`` for the 40×30 label."""
+    if min_t is not None and max_t is not None:
+        lo, hi = min(min_t, max_t), max(min_t, max_t)
+        if lo == hi:
+            return f"{lo}°C"
+        return f"{lo}-{hi}°C"
+    if min_t is not None:
+        return f"{min_t}°C"
+    if max_t is not None:
+        return f"{max_t}°C"
+    return ""
 
 
 # ── QR generation ────────────────────────────────────────────────────────────
@@ -192,23 +215,21 @@ def _truncate_to_width(c: rl_canvas.Canvas, text: str, font: str, size: float, m
     return text + ell if text else ell
 
 
-def _draw_label(c: rl_canvas.Canvas, x: float, y: float, w: float, h: float, data: LabelData) -> None:
-    """Render one label inside the box (x, y, w, h). Origin is bottom-left.
+def _draw_label(
+    c: rl_canvas.Canvas,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    data: LabelData,
+    *,
+    template: str | None = None,
+) -> None:
+    """Render one label inside the box (x, y, w, h). Origin is bottom-left."""
+    if template in _SPOOLMAN_40x30_TEMPLATES:
+        _draw_label_spoolman_40x30(c, x, y, w, h, data)
+        return
 
-    Two layouts, picked by available height:
-
-    - **Tight** (h < 20 mm): swatch on the left, three lines of text on the
-      right (brand, material+subtype, big spool ID). No QR — at very small
-      heights there is not enough horizontal room for swatch + text + QR
-      without truncating away the user-need fields. Kept as the safety
-      branch for any future ultra-small preset; the shipped templates all
-      land in the roomy layout below.
-
-    - **Roomy** (h >= 20 mm — AMS holder, box label, Avery sheets): swatch
-      on the left, QR on the right, multi-line text in the middle column.
-      Large spool ID anchored at bottom-left under the swatch so it stays
-      readable at arm's length.
-    """
     pad = 1.2 * mm
     inner_x, inner_y = x + pad, y + pad
     inner_w = w - 2 * pad
@@ -378,6 +399,93 @@ def _draw_label_roomy(
     c.drawString(text_x, inner_y + 0.5, id_text)
 
 
+def _draw_label_spoolman_40x30(
+    c: rl_canvas.Canvas,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    data: LabelData,
+) -> None:
+    """Spoolman-style 40×30 mm label: brand, material bar, colour, temps, QR."""
+    pad = 1.0 * mm
+    inner_x = x + pad
+    inner_w = w - 2 * pad
+
+    c.setStrokeColor(HexColor(0xCCCCCC))
+    c.setLineWidth(0.4)
+    c.rect(x, y, w, h, stroke=1, fill=0)
+
+    cursor_top = y + h - pad
+
+    # Brand (left) + hex code (right) on the top row.
+    brand_size = 7.5
+    if data.brand:
+        c.setFillColor(black)
+        c.setFont("Helvetica-Bold", brand_size)
+        brand = _truncate_to_width(c, data.brand, "Helvetica-Bold", brand_size, inner_w * 0.62)
+        cursor_top -= brand_size
+        c.drawString(inner_x, cursor_top, brand)
+
+    hex_code = _hex_code_label(data.rgba)
+    if hex_code:
+        hex_size = 5.5
+        c.setFont("Helvetica", hex_size)
+        hex_w = c.stringWidth(hex_code, "Helvetica", hex_size)
+        c.drawString(inner_x + inner_w - hex_w, y + h - pad - hex_size, hex_code)
+
+    # Material + subtype on a full-width black bar (white text).
+    bar_h = 4.0 * mm
+    cursor_top -= 0.8 * mm
+    bar_y = cursor_top - bar_h
+    c.setFillColor(black)
+    c.rect(inner_x, bar_y, inner_w, bar_h, stroke=0, fill=1)
+    material_line = " ".join(filter(None, [data.material, data.subtype]))
+    if material_line:
+        bar_text_size = 7.5
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", bar_text_size)
+        bar_text = _truncate_to_width(c, material_line, "Helvetica-Bold", bar_text_size, inner_w - 1.5 * mm)
+        bar_text_w = c.stringWidth(bar_text, "Helvetica-Bold", bar_text_size)
+        c.drawString(inner_x + (inner_w - bar_text_w) / 2, bar_y + (bar_h - bar_text_size) / 2 - 0.3, bar_text)
+
+    # Colour name below the bar.
+    color_name = data.color_name or data.name or ""
+    if color_name:
+        color_size = 10
+        color_y = bar_y - 0.8 * mm - color_size
+        c.setFillColor(black)
+        c.setFont("Helvetica-Bold", color_size)
+        c.drawString(inner_x, color_y, _truncate_to_width(c, color_name, "Helvetica-Bold", color_size, inner_w))
+
+    # Bottom row: print settings (left) + QR (right).
+    qr_size = min(11.5 * mm, inner_w * 0.38, (h - 2 * pad) * 0.45)
+    qr_x = x + w - pad - qr_size
+    qr_y = y + pad
+    _draw_qr(c, qr_x, qr_y, qr_size, data.deeplink_url)
+
+    spec_x = inner_x
+    spec_w = max(8 * mm, qr_x - spec_x - 0.8 * mm)
+    spec_size = 5.2
+    line_step = spec_size + 0.9
+    spec_y = qr_y + qr_size - spec_size
+    c.setFillColor(black)
+    c.setFont("Helvetica", spec_size)
+    spec_rows = [
+        ("Nozzle:", _format_temp_range(data.nozzle_temp_min, data.nozzle_temp_max)),
+        ("Bed Temp:", _format_temp_range(data.bed_temp_min, data.bed_temp_max)),
+        ("Flow Ratio:", data.flow_ratio or ""),
+        ("TD:", data.td or ""),
+    ]
+    for label, value in spec_rows:
+        if value:
+            line = f"{label} {value}"
+            c.drawString(spec_x, spec_y, _truncate_to_width(c, line, "Helvetica", spec_size, spec_w))
+        else:
+            c.drawString(spec_x, spec_y, label)
+        spec_y -= line_step
+
+
 # ── Template entry points ────────────────────────────────────────────────────
 
 # (label_w_mm, label_h_mm) for single-label-per-page templates.
@@ -408,7 +516,7 @@ def _render_single_label_pdf(template: TemplateName, data_list: list[LabelData])
     c.setTitle(f"Bambuddy spool labels ({template})")
 
     for data in data_list:
-        _draw_label(c, 0, 0, page_w, page_h, data)
+        _draw_label(c, 0, 0, page_w, page_h, data, template=template)
         c.showPage()
 
     c.save()
@@ -438,7 +546,7 @@ def _render_sheet_pdf(template: TemplateName, data_list: list[LabelData]) -> byt
             col = idx % cols
             x = left_margin + col * (label_w + col_gap)
             y = page_h - top_margin - (row + 1) * label_h - row * row_gap
-            _draw_label(c, x, y, label_w, label_h, data)
+            _draw_label(c, x, y, label_w, label_h, data, template=template)
         c.showPage()
 
     c.save()
