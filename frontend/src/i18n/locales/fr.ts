@@ -3575,6 +3575,10 @@ export default {
           label: 'Étiquette boîte (40 × 30 mm)',
           hint: 'Une étiquette par page ; taille de rouleau DK/Brother courante, idéale pour étiqueter sachets de filament et bacs de stockage.',
         },
+        box40x30A4: {
+          label: 'Étiquette boîte (40 × 30 mm) — feuille A4 × 36',
+          hint: 'Feuille A4 ; 36 étiquettes par page. Utilise les mêmes marges qu’Avery L7160.',
+        },
         box: {
           label: 'Box label (62 × 29 mm)',
           hint: 'Une étiquette par page ; dimensionnée pour Brother PT/QL et petites étiquettes Dymo.',

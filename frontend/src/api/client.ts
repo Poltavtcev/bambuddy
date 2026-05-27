@@ -2503,6 +2503,7 @@ export type SpoolLabelTemplate =
   | 'ams_holder_74x33'
   | 'ams_holder_75x55'
   | 'box_40x30'
+  | 'box_40x30_a4'
   | 'box_62x29'
   | 'avery_5160'
   | 'avery_l7160';

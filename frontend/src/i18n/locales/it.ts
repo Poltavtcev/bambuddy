@@ -3574,6 +3574,10 @@ export default {
           label: 'Etichetta scatola (40 × 30 mm)',
           hint: 'Una etichetta per pagina; misura comune DK/Brother, ideale per etichette di sacchetti filamento e contenitori.',
         },
+        box40x30A4: {
+          label: 'Etichetta scatola (40 × 30 mm) — foglio A4 × 36',
+          hint: 'Foglio A4; 36 etichette per pagina. Usa gli stessi margini di Avery L7160.',
+        },
         box: {
           label: 'Box label (62 × 29 mm)',
           hint: 'Una etichetta per pagina; dimensionata per Brother PT/QL e piccole etichette Dymo.',

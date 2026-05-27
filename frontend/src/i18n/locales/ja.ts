@@ -3586,6 +3586,10 @@ export default {
           label: 'ボックスラベル (40 × 30 mm)',
           hint: '1ページに1枚。DK/Brother の一般的なロールサイズで、フィラメント袋や保管箱のラベルに適しています。',
         },
+        box40x30A4: {
+          label: 'ボックスラベル (40 × 30 mm) — A4 シート × 36',
+          hint: 'A4 シート用。1 ページ 36 枚。Avery L7160 と同じ余白。',
+        },
         box: {
           label: 'Box label (62 × 29 mm)',
           hint: '1ページに1ラベル、Brother PT/QLおよびDymoの小さなラベル用サイズ。',

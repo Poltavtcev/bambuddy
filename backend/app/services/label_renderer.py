@@ -10,6 +10,8 @@ Six fixed templates:
 - ``box_40x30``  — 40×30 mm single label, common DK/Brother roll size and a
   good fit for filament-bag/storage-bin labels (#809 follow-up). Roomy
   layout — swatch, QR, full text column with hex code.
+- ``box_40x30_a4`` — A4 sheet, 40×30 mm × 36 per sheet. Same Avery-style
+  margins as ``avery_l7160`` (15.15 mm top, 7 mm left, 2.5 mm column gap).
 - ``box_62x29``  — 62×29 mm single label, sized for Brother PT/QL and Dymo
   generic small labels. One label per page.
 - ``avery_5160`` — US Letter sheet, 25.4×66.7 mm × 30 per sheet.
@@ -45,6 +47,7 @@ TemplateName = Literal[
     "ams_holder_74x33",
     "ams_holder_75x55",
     "box_40x30",
+    "box_40x30_a4",
     "box_62x29",
     "avery_5160",
     "avery_l7160",
@@ -391,6 +394,8 @@ _SINGLE_LABEL_SIZES_MM: dict[str, tuple[float, float]] = {
 _SHEET_TEMPLATES: dict[str, tuple] = {
     "avery_5160": (letter, 66.675, 25.4, 3, 10, 12.7, 4.76, 3.175, 0.0),
     "avery_l7160": (A4, 63.5, 38.1, 3, 7, 15.15, 7.0, 2.5, 0.0),
+    # Same A4 margins/gaps as avery_l7160; 4×9 grid fits 40×30 mm labels.
+    "box_40x30_a4": (A4, 40.0, 30.0, 4, 9, 15.15, 7.0, 2.5, 0.0),
 }
 
 

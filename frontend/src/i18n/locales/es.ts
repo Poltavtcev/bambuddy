@@ -3589,6 +3589,10 @@ export default {
           label: 'Etiqueta de caja (40 × 30 mm)',
           hint: 'Una etiqueta por página; tamaño de rollo DK/Brother habitual, adecuado para etiquetas de bolsas de filamento y cajas de almacenamiento.',
         },
+        box40x30A4: {
+          label: 'Etiqueta de caja (40 × 30 mm) — hoja A4 × 36',
+          hint: 'Hoja A4; 36 etiquetas por página. Usa los mismos márgenes que Avery L7160.',
+        },
         box: {
           label: 'Box label (62 × 29 mm)',
           hint: 'Una etiqueta por página; dimensionada para las etiquetas pequeñas de Brother PT/QL y Dymo.',

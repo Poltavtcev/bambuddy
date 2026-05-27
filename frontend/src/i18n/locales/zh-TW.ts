@@ -3574,6 +3574,10 @@ export default {
           label: '盒標籤 (40 × 30 mm)',
           hint: '每頁一張；常見的 DK/Brother 捲尺寸,適合用於耗材袋與儲物盒標籤。',
         },
+        box40x30A4: {
+          label: '盒標籤 (40 × 30 mm) — A4 紙張 × 36',
+          hint: 'A4 紙張；每頁 36 張。使用與 Avery L7160 相同的頁邊距。',
+        },
         box: {
           label: 'Box label (62 × 29 mm)',
           hint: '每頁一個標籤；適配 Brother PT/QL 和 Dymo 小標籤。',

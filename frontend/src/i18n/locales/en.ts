@@ -3589,6 +3589,10 @@ export default {
           label: 'Box label (40 × 30 mm)',
           hint: 'Single label per page; common DK/Brother roll size, good for filament-bag and storage-bin labels.',
         },
+        box40x30A4: {
+          label: 'Box label (40 × 30 mm) — A4 sheet × 36',
+          hint: 'A4 sheet stock; 36 labels per page. Uses the same margins as Avery L7160.',
+        },
         box: {
           label: 'Box label (62 × 29 mm)',
           hint: 'Single label per page; sized for Brother PT/QL and Dymo small labels.',

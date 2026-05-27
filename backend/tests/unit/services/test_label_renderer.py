@@ -10,6 +10,7 @@ ALL_TEMPLATES = (
     "ams_holder_74x33",
     "ams_holder_75x55",
     "box_40x30",
+    "box_40x30_a4",
     "box_62x29",
     "avery_5160",
     "avery_l7160",
@@ -96,6 +97,13 @@ def test_sheet_template_paginates_when_count_exceeds_one_sheet():
     assert len(two) > len(one)
 
 
+def test_box_40x30_a4_paginates_when_count_exceeds_one_sheet():
+    """box_40x30_a4 = 36 per sheet; 37 spools must paginate to 2 pages."""
+    one = render_labels("box_40x30_a4", [_sample(i) for i in range(1, 37)])
+    two = render_labels("box_40x30_a4", [_sample(i) for i in range(1, 38)])
+    assert len(two) > len(one)
+
+
 def test_qr_payload_is_present_in_pdf_stream():
     """The QR encodes the deeplink URL via embedded PNG; we can at least
     sanity-check that the PDF contains an image stream when a deeplink is set
@@ -149,10 +157,15 @@ def _render_uncompressed(template, data):
         label_w_mm, label_h_mm = 66.675, 25.4
         cols, rows = 3, 10
         top_mm, left_mm, col_gap_mm = 12.7, 4.76, 3.175
-    else:  # avery_l7160
+    elif template == "avery_l7160":
         page_size = A4
         label_w_mm, label_h_mm = 63.5, 38.1
         cols, rows = 3, 7
+        top_mm, left_mm, col_gap_mm = 15.15, 7.0, 2.5
+    else:  # box_40x30_a4
+        page_size = A4
+        label_w_mm, label_h_mm = 40.0, 30.0
+        cols, rows = 4, 9
         top_mm, left_mm, col_gap_mm = 15.15, 7.0, 2.5
     buf = _io.BytesIO()
     c = _rl_canvas.Canvas(buf, pagesize=page_size, pageCompression=0)

@@ -250,7 +250,7 @@ describe('LabelTemplatePickerModal', () => {
       />,
     );
 
-    fireEvent.click(screen.getByText(/Avery L7160/i));
+    fireEvent.click(screen.getByText(/Avery L7160 — A4 sheet/i));
 
     await waitFor(() => {
       expect(api.printSpoolLabels).toHaveBeenCalled();
@@ -304,13 +304,14 @@ describe('LabelTemplatePickerModal', () => {
       />,
     );
 
-    // All six templates must be in the DOM (#1426 added two AMS variants).
+    // All seven templates must be in the DOM.
     // Use the dimension suffix to disambiguate same-family entries.
     expect(screen.getByText(/AMS holder — small \(74 × 33 mm\)/i)).toBeInTheDocument();
     expect(screen.getByText(/AMS holder — large \(75 × 55 mm\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/Box label \(40 × 30 mm\)/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Box label \(40 × 30 mm\).*Single label per page/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Box label \(40 × 30 mm\).*A4 sheet × 36/i })).toBeInTheDocument();
     expect(screen.getByText(/Box label \(62 × 29 mm\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/Avery L7160/i)).toBeInTheDocument();
+    expect(screen.getByText(/Avery L7160 — A4 sheet/i)).toBeInTheDocument();
     expect(screen.getByText(/Avery 5160/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Cancel/i })).toBeInTheDocument();
 
@@ -320,7 +321,7 @@ describe('LabelTemplatePickerModal', () => {
     const templatesSection = container.querySelector('div.grid.sm\\:grid-cols-2');
     expect(templatesSection).not.toBeNull();
     expect(templatesSection!.className).toContain('grid-cols-1');
-    expect(templatesSection!.querySelectorAll('button').length).toBe(6);
+    expect(templatesSection!.querySelectorAll('button').length).toBe(7);
 
     // Spool list still uses min-h-0 so it can yield further on very tight viewports.
     const spoolListScroller = container.querySelector('div.flex-1.overflow-y-auto');
@@ -379,7 +380,7 @@ describe('LabelTemplatePickerModal', () => {
       />,
     );
 
-    fireEvent.click(screen.getByText(/Box label \(40 × 30 mm\)/i));
+    fireEvent.click(screen.getByRole('button', { name: /Box label \(40 × 30 mm\).*Single label per page/i }));
 
     await waitFor(() => {
       expect(api.printSpoolLabels).toHaveBeenCalledWith({

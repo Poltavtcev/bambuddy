@@ -3586,6 +3586,10 @@ export default {
           label: 'Boxetikett (40 × 30 mm)',
           hint: 'Ein Etikett pro Seite; gängige DK/Brother-Rollengröße, ideal für Filament-Beutel und Lager-Etiketten.',
         },
+        box40x30A4: {
+          label: 'Boxetikett (40 × 30 mm) — A4-Bogen × 36',
+          hint: 'A4-Bogenformat; 36 Etiketten pro Seite. Gleiche Ränder wie Avery L7160.',
+        },
         box: {
           label: 'Box label (62 × 29 mm)',
           hint: 'Ein Etikett pro Seite; für Brother PT/QL und Dymo-Kleinetiketten dimensioniert.',
