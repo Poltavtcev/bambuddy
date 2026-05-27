@@ -410,42 +410,38 @@ def _draw_label_spoolman_40x30(
         cursor_top -= brand_size
         c.drawString(inner_x, cursor_top, brand)
 
-    # Filament-colour bar with material + hex on the same row.
+    # Colour bar (~⅔ width) with material centred on it; hex sits in the right ⅓.
     bar_h = 4.2 * mm
     cursor_top -= 0.7 * mm
     bar_y = cursor_top - bar_h
-    _draw_swatch(c, inner_x, bar_y, inner_w, bar_h, data)
+    bar_w = inner_w * (2 / 3)
+    hex_zone_x = inner_x + bar_w + 0.4 * mm
+    hex_zone_w = inner_w - bar_w - 0.4 * mm
+
+    _draw_swatch(c, inner_x, bar_y, bar_w, bar_h, data)
 
     on_bar = _on_bar_text_color(data)
-    hex_code = _hex_code_label(data.rgba)
-    hex_size = 5.5
-    hex_x = inner_x + inner_w / 3
-    text_y = bar_y + (bar_h - hex_size) / 2 - 0.2
-
-    if hex_code:
-        c.setFillColor(on_bar)
-        c.setFont("Helvetica-Bold", hex_size)
-        c.drawString(hex_x, text_y, hex_code)
-
     material_line = " ".join(filter(None, [data.material, data.subtype]))
     if material_line:
         bar_text_size = 7.5
         c.setFillColor(on_bar)
         c.setFont("Helvetica-Bold", bar_text_size)
-        text_y_mat = bar_y + (bar_h - bar_text_size) / 2 - 0.3
-        hex_end = hex_x + (c.stringWidth(hex_code, "Helvetica-Bold", hex_size) if hex_code else 0)
-        mat_zone_x = hex_end + 0.6 * mm
-        mat_zone_w = inner_x + inner_w - mat_zone_x
-        if mat_zone_w >= 8 * mm:
-            bar_text = _truncate_to_width(c, material_line, "Helvetica-Bold", bar_text_size, mat_zone_w)
-            bar_text_w = c.stringWidth(bar_text, "Helvetica-Bold", bar_text_size)
-            c.drawString(mat_zone_x + (mat_zone_w - bar_text_w) / 2, text_y_mat, bar_text)
-        else:
-            bar_text = _truncate_to_width(
-                c, material_line, "Helvetica-Bold", bar_text_size, max(8 * mm, inner_w - 1.5 * mm)
-            )
-            bar_text_w = c.stringWidth(bar_text, "Helvetica-Bold", bar_text_size)
-            c.drawString(inner_x + (inner_w - bar_text_w) / 2, text_y_mat, bar_text)
+        bar_text = _truncate_to_width(c, material_line, "Helvetica-Bold", bar_text_size, bar_w - 1.5 * mm)
+        bar_text_w = c.stringWidth(bar_text, "Helvetica-Bold", bar_text_size)
+        c.drawString(
+            inner_x + (bar_w - bar_text_w) / 2,
+            bar_y + (bar_h - bar_text_size) / 2 - 0.3,
+            bar_text,
+        )
+
+    hex_code = _hex_code_label(data.rgba)
+    if hex_code:
+        hex_size = 5.5
+        c.setFillColor(black)
+        c.setFont("Helvetica", hex_size)
+        hex_w = c.stringWidth(hex_code, "Helvetica", hex_size)
+        hex_x = hex_zone_x + max(0, (hex_zone_w - hex_w) / 2)
+        c.drawString(hex_x, bar_y + (bar_h - hex_size) / 2 - 0.2, hex_code)
 
     # Colour name below the bar; fall back to the generic spool name when unset.
     display_color = data.color_name or data.name or ""
