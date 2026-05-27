@@ -85,36 +85,6 @@ async def _resolve_deeplink_base(request: Request, db: AsyncSession) -> str:
     return f"{request.url.scheme}://{request.url.netloc}"
 
 
-def _parse_temp_range(raw) -> tuple[int | None, int | None]:
-    """Parse Spoolman-style temperature values (int, range string, or list)."""
-    if raw is None:
-        return None, None
-    if isinstance(raw, (list, tuple)):
-        nums = [int(v) for v in raw if str(v).strip().lstrip("-").isdigit()]
-        if len(nums) >= 2:
-            return min(nums[0], nums[1]), max(nums[0], nums[1])
-        if len(nums) == 1:
-            return nums[0], nums[0]
-        return None, None
-    if isinstance(raw, str):
-        text = raw.strip().replace("°C", "").replace("°", "")
-        if "-" in text:
-            left, right = text.split("-", 1)
-            try:
-                return int(left.strip()), int(right.strip())
-            except ValueError:
-                pass
-        if text.isdigit() or (text.startswith("-") and text[1:].isdigit()):
-            value = int(text)
-            return value, value
-        return None, None
-    try:
-        value = int(raw)
-        return value, value
-    except (TypeError, ValueError):
-        return None, None
-
-
 def _spool_to_label_data(spool: Spool, deeplink_base: str) -> LabelData:
     name = spool.color_name or spool.slicer_filament_name or f"{spool.brand or ''} {spool.material}".strip()
     return LabelData(
@@ -128,8 +98,6 @@ def _spool_to_label_data(spool: Spool, deeplink_base: str) -> LabelData:
         storage_location=getattr(spool, "storage_location", None),
         deeplink_url=f"{deeplink_base}/inventory?spool={spool.id}",
         color_name=spool.color_name,
-        nozzle_temp_min=spool.nozzle_temp_min,
-        nozzle_temp_max=spool.nozzle_temp_max,
     )
 
 
@@ -166,10 +134,7 @@ def _spoolman_dict_to_label_data(s: dict, deeplink_base: str) -> LabelData:
         if isinstance(raw_color, str) and raw_color.strip():
             stored_color_name = raw_color.strip()
 
-    color_name = stored_color_name or (filament.get("color_name") or None) or subtype
-
-    nozzle_min, nozzle_max = _parse_temp_range(filament.get("settings_extruder_temp"))
-    bed_min, bed_max = _parse_temp_range(filament.get("settings_bed_temp"))
+    color_name = stored_color_name or (filament.get("color_name") or None)
 
     multi_colors = filament.get("multi_color_hexes")
     extra_colors: list[str] | None = None
@@ -189,10 +154,6 @@ def _spoolman_dict_to_label_data(s: dict, deeplink_base: str) -> LabelData:
         storage_location=s.get("location"),
         deeplink_url=f"{deeplink_base}/inventory?spool={int(s.get('id', 0))}",
         color_name=color_name,
-        nozzle_temp_min=nozzle_min,
-        nozzle_temp_max=nozzle_max,
-        bed_temp_min=bed_min,
-        bed_temp_max=bed_max,
     )
 
 

@@ -7,8 +7,8 @@ Six fixed templates:
   Smaller variant — the visible window in the holder. One label per page.
 - ``ams_holder_75x55`` — 75×55 mm single label, fits the cardstock-insert
   variant of the same holder. Roomier — swatch + QR + full text column.
-- ``box_40x30``  — 40×30 mm single label, common DK/Brother roll size. Spoolman-
-  style layout: brand + material bar + colour name + print temps + QR.
+- ``box_40x30``  — 40×30 mm single label. Bag/box layout: brand, filament-
+  colour bar (material + hex), colour name, spool #, QR.
 - ``box_40x30_a4`` — A4 sheet, 40×30 mm × 36 per sheet. Same layout as
   ``box_40x30``; Avery L7160 margins (15.15 mm top, 7 mm left, 2.5 mm gap).
 - ``box_62x29``  — 62×29 mm single label, sized for Brother PT/QL and Dymo
@@ -25,8 +25,7 @@ list from whatever source (local DB, Spoolman, future) so the same code path
 works in both modes.
 
 Layout principle (#809): on most templates the **spool ID** dominates; the
-40×30 presets instead follow the Spoolman-style layout (brand, material bar,
-colour name, print settings, QR) for bag/box labels.
+40×30 presets use a compact bag label (brand, colour bar, colour name, #ID, QR).
 """
 
 from __future__ import annotations
@@ -69,14 +68,7 @@ class LabelData:
     extra_colors: list[str] | None = None  # additional hex colours (no '#')
     storage_location: str | None = None
     deeplink_url: str = ""  # what the QR encodes; caller composes it
-    # Spoolman-style 40×30 fields (optional — blank when unknown).
     color_name: str | None = None
-    nozzle_temp_min: int | None = None
-    nozzle_temp_max: int | None = None
-    bed_temp_min: int | None = None
-    bed_temp_max: int | None = None
-    flow_ratio: str | None = None
-    td: str | None = None
 
 
 _SPOOLMAN_40x30_TEMPLATES = frozenset({"box_40x30", "box_40x30_a4"})
@@ -131,18 +123,9 @@ def _hex_code_label(rgba: str | None) -> str:
     return f"#{rgb.upper()}"
 
 
-def _format_temp_range(min_t: int | None, max_t: int | None) -> str:
-    """Render a nozzle/bed range like ``230-250°C`` for the 40×30 label."""
-    if min_t is not None and max_t is not None:
-        lo, hi = min(min_t, max_t), max(min_t, max_t)
-        if lo == hi:
-            return f"{lo}°C"
-        return f"{lo}-{hi}°C"
-    if min_t is not None:
-        return f"{min_t}°C"
-    if max_t is not None:
-        return f"{max_t}°C"
-    return ""
+def _on_bar_text_color(data: LabelData) -> Color:
+    """Pick white or black label text that reads on the filament colour bar."""
+    return white if _luminance(_color_from_hex(data.rgba)) < 0.55 else black
 
 
 # ── QR generation ────────────────────────────────────────────────────────────
@@ -407,7 +390,7 @@ def _draw_label_spoolman_40x30(
     h: float,
     data: LabelData,
 ) -> None:
-    """Spoolman-style 40×30 mm label: brand, material bar, colour, temps, QR."""
+    """40×30 mm bag label: brand, filament-colour bar, colour name, spool #, QR."""
     pad = 1.0 * mm
     inner_x = x + pad
     inner_w = w - 2 * pad
@@ -418,72 +401,75 @@ def _draw_label_spoolman_40x30(
 
     cursor_top = y + h - pad
 
-    # Brand (left) + hex code (right) on the top row.
+    # Top row: brand only.
     brand_size = 7.5
     if data.brand:
         c.setFillColor(black)
         c.setFont("Helvetica-Bold", brand_size)
-        brand = _truncate_to_width(c, data.brand, "Helvetica-Bold", brand_size, inner_w * 0.62)
+        brand = _truncate_to_width(c, data.brand, "Helvetica-Bold", brand_size, inner_w)
         cursor_top -= brand_size
         c.drawString(inner_x, cursor_top, brand)
 
-    hex_code = _hex_code_label(data.rgba)
-    if hex_code:
-        hex_size = 5.5
-        c.setFont("Helvetica", hex_size)
-        hex_w = c.stringWidth(hex_code, "Helvetica", hex_size)
-        c.drawString(inner_x + inner_w - hex_w, y + h - pad - hex_size, hex_code)
-
-    # Material + subtype on a full-width black bar (white text).
-    bar_h = 4.0 * mm
-    cursor_top -= 0.8 * mm
+    # Filament-colour bar with material + hex on the same row.
+    bar_h = 4.2 * mm
+    cursor_top -= 0.7 * mm
     bar_y = cursor_top - bar_h
-    c.setFillColor(black)
-    c.rect(inner_x, bar_y, inner_w, bar_h, stroke=0, fill=1)
+    _draw_swatch(c, inner_x, bar_y, inner_w, bar_h, data)
+
+    on_bar = _on_bar_text_color(data)
+    hex_code = _hex_code_label(data.rgba)
+    hex_size = 5.5
+    hex_x = inner_x + inner_w / 3
+    text_y = bar_y + (bar_h - hex_size) / 2 - 0.2
+
+    if hex_code:
+        c.setFillColor(on_bar)
+        c.setFont("Helvetica-Bold", hex_size)
+        c.drawString(hex_x, text_y, hex_code)
+
     material_line = " ".join(filter(None, [data.material, data.subtype]))
     if material_line:
         bar_text_size = 7.5
-        c.setFillColor(white)
+        c.setFillColor(on_bar)
         c.setFont("Helvetica-Bold", bar_text_size)
-        bar_text = _truncate_to_width(c, material_line, "Helvetica-Bold", bar_text_size, inner_w - 1.5 * mm)
-        bar_text_w = c.stringWidth(bar_text, "Helvetica-Bold", bar_text_size)
-        c.drawString(inner_x + (inner_w - bar_text_w) / 2, bar_y + (bar_h - bar_text_size) / 2 - 0.3, bar_text)
+        text_y_mat = bar_y + (bar_h - bar_text_size) / 2 - 0.3
+        hex_end = hex_x + (c.stringWidth(hex_code, "Helvetica-Bold", hex_size) if hex_code else 0)
+        mat_zone_x = hex_end + 0.6 * mm
+        mat_zone_w = inner_x + inner_w - mat_zone_x
+        if mat_zone_w >= 8 * mm:
+            bar_text = _truncate_to_width(c, material_line, "Helvetica-Bold", bar_text_size, mat_zone_w)
+            bar_text_w = c.stringWidth(bar_text, "Helvetica-Bold", bar_text_size)
+            c.drawString(mat_zone_x + (mat_zone_w - bar_text_w) / 2, text_y_mat, bar_text)
+        else:
+            bar_text = _truncate_to_width(
+                c, material_line, "Helvetica-Bold", bar_text_size, max(8 * mm, inner_w - 1.5 * mm)
+            )
+            bar_text_w = c.stringWidth(bar_text, "Helvetica-Bold", bar_text_size)
+            c.drawString(inner_x + (inner_w - bar_text_w) / 2, text_y_mat, bar_text)
 
-    # Colour name below the bar.
-    color_name = data.color_name or data.name or ""
-    if color_name:
-        color_size = 10
+    # Colour name only — never fall back to the generic spool name field.
+    if data.color_name:
+        color_size = 10.5
         color_y = bar_y - 0.8 * mm - color_size
         c.setFillColor(black)
         c.setFont("Helvetica-Bold", color_size)
-        c.drawString(inner_x, color_y, _truncate_to_width(c, color_name, "Helvetica-Bold", color_size, inner_w))
+        c.drawString(
+            inner_x,
+            color_y,
+            _truncate_to_width(c, data.color_name, "Helvetica-Bold", color_size, inner_w),
+        )
 
-    # Bottom row: print settings (left) + QR (right).
-    qr_size = min(11.5 * mm, inner_w * 0.38, (h - 2 * pad) * 0.45)
+    # Bottom row: spool ID (left) + QR (right, slightly larger).
+    qr_size = min(13.5 * mm, inner_w * 0.42, (h - 2 * pad) * 0.5)
     qr_x = x + w - pad - qr_size
     qr_y = y + pad
     _draw_qr(c, qr_x, qr_y, qr_size, data.deeplink_url)
 
-    spec_x = inner_x
-    spec_w = max(8 * mm, qr_x - spec_x - 0.8 * mm)
-    spec_size = 5.2
-    line_step = spec_size + 0.9
-    spec_y = qr_y + qr_size - spec_size
+    id_size = 14
     c.setFillColor(black)
-    c.setFont("Helvetica", spec_size)
-    spec_rows = [
-        ("Nozzle:", _format_temp_range(data.nozzle_temp_min, data.nozzle_temp_max)),
-        ("Bed Temp:", _format_temp_range(data.bed_temp_min, data.bed_temp_max)),
-        ("Flow Ratio:", data.flow_ratio or ""),
-        ("TD:", data.td or ""),
-    ]
-    for label, value in spec_rows:
-        if value:
-            line = f"{label} {value}"
-            c.drawString(spec_x, spec_y, _truncate_to_width(c, line, "Helvetica", spec_size, spec_w))
-        else:
-            c.drawString(spec_x, spec_y, label)
-        spec_y -= line_step
+    c.setFont("Helvetica-Bold", id_size)
+    id_text = f"#{data.spool_id}"
+    c.drawString(inner_x, qr_y + (qr_size - id_size) / 2 - 0.5, id_text)
 
 
 # ── Template entry points ────────────────────────────────────────────────────

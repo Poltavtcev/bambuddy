@@ -48,13 +48,13 @@ const TEMPLATE_OPTIONS: TemplateOption[] = [
     value: 'box_40x30',
     i18nKey: 'box40x30',
     fallbackLabel: 'Box label (40 × 30 mm)',
-    fallbackHint: 'Single label per page; Spoolman-style layout with brand, material bar, colour, temps, and QR.',
+    fallbackHint: 'Single label per page; brand, colour bar, colour name, spool #, and QR.',
   },
   {
     value: 'box_40x30_a4',
     i18nKey: 'box40x30A4',
     fallbackLabel: 'Box label (40 × 30 mm) — A4 sheet × 36',
-    fallbackHint: 'A4 sheet stock; 36 Spoolman-style labels per page (same margins as Avery L7160).',
+    fallbackHint: 'A4 sheet stock; 36 bag labels per page (same margins as Avery L7160).',
   },
   {
     value: 'box_62x29',

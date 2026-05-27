@@ -3587,11 +3587,11 @@ export default {
         },
         box40x30: {
           label: 'Box label (40 × 30 mm)',
-          hint: 'Single label per page; Spoolman-style layout with brand, material bar, colour, temps, and QR.',
+          hint: 'Single label per page; brand, colour bar, colour name, spool #, and QR.',
         },
         box40x30A4: {
           label: 'Box label (40 × 30 mm) — A4 sheet × 36',
-          hint: 'A4 sheet stock; 36 Spoolman-style labels per page (same margins as Avery L7160).',
+          hint: 'A4 sheet stock; 36 bag labels per page (same margins as Avery L7160).',
         },
         box: {
           label: 'Box label (62 × 29 mm)',
