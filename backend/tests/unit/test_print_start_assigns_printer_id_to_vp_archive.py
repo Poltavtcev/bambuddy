@@ -27,6 +27,45 @@ from backend.app.main import (
 )
 
 
+def _mock_printer_for_print_start(**overrides) -> MagicMock:
+    """Printer stub for on_print_start unit tests.
+
+    MagicMock makes unset attrs truthy — plate_detection_enabled defaults to
+    a truthy MagicMock and would run the real plate-detection path (network /
+    ffmpeg) before the expected-archive branch under test.
+    """
+    mock_printer = MagicMock()
+    mock_printer.auto_archive = True
+    mock_printer.external_camera_enabled = False
+    mock_printer.external_camera_url = None
+    mock_printer.name = "TestP1S"
+    mock_printer.plate_detection_enabled = False
+    for key, value in overrides.items():
+        setattr(mock_printer, key, value)
+    return mock_printer
+
+
+def _archive_execute_router(mock_printer: MagicMock, mock_archive: MagicMock):
+    def execute_router(stmt, *args, **kwargs):
+        sql = str(stmt).lower()
+        if "from printers" in sql or "from printer " in sql:
+            return MagicMock(
+                scalar_one_or_none=MagicMock(return_value=mock_printer),
+                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[mock_printer]))),
+            )
+        if "print_archive" in sql:
+            return MagicMock(
+                scalar_one_or_none=MagicMock(return_value=mock_archive),
+                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[mock_archive]))),
+            )
+        return MagicMock(
+            scalar_one_or_none=MagicMock(return_value=None),
+            scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[]))),
+        )
+
+    return execute_router
+
+
 @pytest.fixture(autouse=True)
 def _clear_dicts():
     _expected_prints.clear()
@@ -50,12 +89,7 @@ async def test_expected_archive_path_assigns_printer_id_when_unset():
     to the printer that actually started the job. Without this the
     /archives/{id}/timelapse/scan endpoint refuses the request (it requires
     archive.printer_id) and the UI button stays disabled."""
-    mock_printer = MagicMock()
-    mock_printer.id = 1
-    mock_printer.auto_archive = True
-    mock_printer.external_camera_enabled = False
-    mock_printer.external_camera_url = None
-    mock_printer.name = "TestP1S"
+    mock_printer = _mock_printer_for_print_start(id=1)
 
     # VP-queue archive: printer_id is None — this is the bug surface.
     mock_archive = MagicMock()
@@ -72,27 +106,10 @@ async def test_expected_archive_path_assigns_printer_id_when_unset():
 
     register_expected_print(1, "bambu_lab_a1_tool_plate_3.gcode.3mf", archive_id=42, ams_mapping=None)
 
-    def execute_router(stmt, *args, **kwargs):
-        sql = str(stmt).lower()
-        if "from printers" in sql or "from printer " in sql:
-            return MagicMock(
-                scalar_one_or_none=MagicMock(return_value=mock_printer),
-                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[mock_printer]))),
-            )
-        if "from print_archives" in sql or "from print_archive" in sql:
-            return MagicMock(
-                scalar_one_or_none=MagicMock(return_value=mock_archive),
-                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[mock_archive]))),
-            )
-        return MagicMock(
-            scalar_one_or_none=MagicMock(return_value=None),
-            scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[]))),
-        )
-
     mock_session = AsyncMock()
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock()
-    mock_session.execute = AsyncMock(side_effect=execute_router)
+    mock_session.execute = AsyncMock(side_effect=_archive_execute_router(mock_printer, mock_archive))
     mock_session.commit = AsyncMock()
 
     with (
@@ -138,12 +155,7 @@ async def test_expected_archive_path_preserves_existing_printer_id():
     library-file-based queue item created with the printer pre-assigned),
     don't clobber it with a stale value. The branch is idempotent on
     correct data."""
-    mock_printer = MagicMock()
-    mock_printer.id = 7
-    mock_printer.auto_archive = True
-    mock_printer.external_camera_enabled = False
-    mock_printer.external_camera_url = None
-    mock_printer.name = "TestP1S"
+    mock_printer = _mock_printer_for_print_start(id=7)
 
     mock_archive = MagicMock()
     mock_archive.id = 99
@@ -159,27 +171,10 @@ async def test_expected_archive_path_preserves_existing_printer_id():
 
     register_expected_print(7, "MyModel.3mf", archive_id=99, ams_mapping=None)
 
-    def execute_router(stmt, *args, **kwargs):
-        sql = str(stmt).lower()
-        if "from printers" in sql or "from printer " in sql:
-            return MagicMock(
-                scalar_one_or_none=MagicMock(return_value=mock_printer),
-                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[mock_printer]))),
-            )
-        if "from print_archives" in sql or "from print_archive" in sql:
-            return MagicMock(
-                scalar_one_or_none=MagicMock(return_value=mock_archive),
-                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[mock_archive]))),
-            )
-        return MagicMock(
-            scalar_one_or_none=MagicMock(return_value=None),
-            scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[]))),
-        )
-
     mock_session = AsyncMock()
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock()
-    mock_session.execute = AsyncMock(side_effect=execute_router)
+    mock_session.execute = AsyncMock(side_effect=_archive_execute_router(mock_printer, mock_archive))
     mock_session.commit = AsyncMock()
 
     with (
@@ -223,12 +218,7 @@ async def test_expected_archive_path_captures_timelapse_baseline():
     contain the snapshot of existing video filenames for this printer_id,
     so the completion-time scan can set-diff against it.
     """
-    mock_printer = MagicMock()
-    mock_printer.id = 1
-    mock_printer.auto_archive = True
-    mock_printer.external_camera_enabled = False
-    mock_printer.external_camera_url = None
-    mock_printer.name = "TestP1S"
+    mock_printer = _mock_printer_for_print_start(id=1)
 
     mock_archive = MagicMock()
     mock_archive.id = 42
@@ -251,27 +241,10 @@ async def test_expected_archive_path_captures_timelapse_baseline():
         {"name": "earlier_print_b.mp4", "is_directory": False, "path": "/timelapse/earlier_print_b.mp4"},
     ]
 
-    def execute_router(stmt, *args, **kwargs):
-        sql = str(stmt).lower()
-        if "from printers" in sql or "from printer " in sql:
-            return MagicMock(
-                scalar_one_or_none=MagicMock(return_value=mock_printer),
-                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[mock_printer]))),
-            )
-        if "from print_archives" in sql or "from print_archive" in sql:
-            return MagicMock(
-                scalar_one_or_none=MagicMock(return_value=mock_archive),
-                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[mock_archive]))),
-            )
-        return MagicMock(
-            scalar_one_or_none=MagicMock(return_value=None),
-            scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[]))),
-        )
-
     mock_session = AsyncMock()
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock()
-    mock_session.execute = AsyncMock(side_effect=execute_router)
+    mock_session.execute = AsyncMock(side_effect=_archive_execute_router(mock_printer, mock_archive))
     mock_session.commit = AsyncMock()
 
     with (
