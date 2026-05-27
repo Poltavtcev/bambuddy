@@ -447,8 +447,9 @@ def _draw_label_spoolman_40x30(
             bar_text_w = c.stringWidth(bar_text, "Helvetica-Bold", bar_text_size)
             c.drawString(inner_x + (inner_w - bar_text_w) / 2, text_y_mat, bar_text)
 
-    # Colour name only — never fall back to the generic spool name field.
-    if data.color_name:
+    # Colour name below the bar; fall back to the generic spool name when unset.
+    display_color = data.color_name or data.name or ""
+    if display_color:
         color_size = 10.5
         color_y = bar_y - 0.8 * mm - color_size
         c.setFillColor(black)
@@ -456,7 +457,7 @@ def _draw_label_spoolman_40x30(
         c.drawString(
             inner_x,
             color_y,
-            _truncate_to_width(c, data.color_name, "Helvetica-Bold", color_size, inner_w),
+            _truncate_to_width(c, display_color, "Helvetica-Bold", color_size, inner_w),
         )
 
     # Bottom row: spool ID (left) + QR (right, slightly larger).
