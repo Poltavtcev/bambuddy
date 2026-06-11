@@ -181,6 +181,7 @@ async def init_db():
         kprofile_note,
         library,
         local_preset,
+        location,
         long_lived_token,
         maintenance,
         notification,
@@ -2913,6 +2914,87 @@ async def run_migrations(conn):
     # Data migration: drop the embedded 3MF Title (`print_name`) from library
     # file metadata so the FileManager displays the filename, not the title (#1489).
     await _migrate_drop_library_print_name(conn)
+
+    # Migration: structured storage locations (#1004). Flat catalog of physical
+    # shelves/drawers; spool.location_id FK with storage_location kept denormalized.
+    await _safe_execute(
+        conn,
+        """
+        CREATE TABLE IF NOT EXISTS locations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            name_key VARCHAR(255),
+            identifier VARCHAR(100),
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+        if is_sqlite()
+        else """
+        CREATE TABLE IF NOT EXISTS locations (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            name_key VARCHAR(255),
+            identifier VARCHAR(100),
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+    )
+    await _safe_execute(conn, "ALTER TABLE locations ADD COLUMN name_key VARCHAR(255)")
+    await _safe_execute(conn, "CREATE UNIQUE INDEX IF NOT EXISTS ix_locations_name_key ON locations (name_key)")
+    await _safe_execute(conn, "ALTER TABLE spool ADD COLUMN location_id INTEGER REFERENCES locations(id)")
+    await _safe_execute(conn, "CREATE INDEX IF NOT EXISTS ix_spool_location_id ON spool (location_id)")
+
+    # Backfill locations from existing free-text storage_location values.
+    # GROUP BY name_key so case variants ("Drybox 1" / "DRYBOX 1") collapse to
+    # one row; INSERT OR IGNORE / ON CONFLICT keeps the migration idempotent.
+    _location_backfill_sql = (
+        """
+        INSERT OR IGNORE INTO locations (name, name_key, created_at, updated_at)
+        SELECT MIN(TRIM(storage_location)), LOWER(TRIM(storage_location)), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        FROM spool
+        WHERE TRIM(COALESCE(storage_location, '')) != ''
+        GROUP BY LOWER(TRIM(storage_location))
+        """
+        if is_sqlite()
+        else """
+        INSERT INTO locations (name, name_key, created_at, updated_at)
+        SELECT MIN(TRIM(storage_location)), LOWER(TRIM(storage_location)), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        FROM spool
+        WHERE TRIM(COALESCE(storage_location, '')) != ''
+        GROUP BY LOWER(TRIM(storage_location))
+        ON CONFLICT (name_key) DO NOTHING
+        """
+    )
+    async with conn.begin_nested():
+        await conn.execute(text(_location_backfill_sql))
+        await conn.execute(
+            text(
+                """
+                UPDATE spool
+                SET location_id = (
+                    SELECT l.id FROM locations l
+                    WHERE l.name_key = LOWER(TRIM(spool.storage_location))
+                    LIMIT 1
+                )
+                WHERE TRIM(COALESCE(storage_location, '')) != ''
+                  AND location_id IS NULL
+                """
+            )
+        )
+
+    # Backfill name_key for rows created before the column existed.
+    async with conn.begin_nested():
+        await conn.execute(
+            text(
+                """
+                UPDATE locations
+                SET name_key = LOWER(TRIM(name))
+                WHERE name_key IS NULL OR TRIM(name_key) = ''
+                """
+            )
+        )
 
 
 async def seed_notification_templates():

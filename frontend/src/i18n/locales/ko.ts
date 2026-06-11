@@ -3439,6 +3439,29 @@ export default {
     reportPartialUsage: '실패한 인쇄물에 대한 부분 사용량 보고',
     reportPartialUsageDesc: '인쇄가 실패하거나 취소될 때 레이어 진행률을 기반으로 해당 시점까지 사용된 예상 필라멘트를 보고합니다.'
   },
+
+  locations: {
+    title: '보관 위치',
+    subtitle: '스풀을 위한 선반, 서랍 및 기타 물리적 보관 장소를 관리하세요',
+    add: '위치 추가',
+    addShort: '추가',
+    edit: '위치 편집',
+    name: '이름',
+    spools: '스풀',
+    empty: '아직 보관 위치가 없습니다. 첫 번째 선반이나 서랍을 만드세요.',
+    manage: '위치',
+    createPlaceholder: '예: 선반 A, 서랍 1',
+    nameRequired: '위치 이름이 필요합니다',
+    created: '위치가 생성되었습니다',
+    updated: '위치가 업데이트되었습니다',
+    deleted: '위치가 삭제되었습니다',
+    saveFailed: '위치를 저장하지 못했습니다',
+    deleteFailed: '위치를 삭제하지 못했습니다',
+    deleteBlocked: '삭제하기 전에 이 위치에서 모든 스풀을 제거하세요',
+    confirmDelete: '"{{name}}"을(를) 삭제하시겠습니까?',
+    confirmDeleteMessage: '이 위치는 카탈로그에서 제거됩니다. 먼저 스풀을 이동해야 합니다.',
+  },
+
   inventory: {
     title: '스풀 재고',
     spoolmanMixedContentTitle: 'HTTPS에서 Spoolman을 불러올 수 없음 — 브라우저가 혼합 콘텐츠를 차단함',

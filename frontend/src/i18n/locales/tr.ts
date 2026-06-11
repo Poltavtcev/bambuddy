@@ -3635,6 +3635,28 @@ export default {
     reportPartialUsageDesc: 'Bir baskı başarısız olduğunda veya iptal edildiğinde, katman ilerlemesine göre o noktaya kadar kullanılan tahmini filamenti bildir.',
   },
 
+  locations: {
+    title: 'Depolama Konumları',
+    subtitle: 'Makaralarınız için rafları, çekmeceleri ve diğer fiziksel depolama yerlerini yönetin',
+    add: 'Konum Ekle',
+    addShort: 'Ekle',
+    edit: 'Konumu Düzenle',
+    name: 'Ad',
+    spools: 'Makaralar',
+    empty: 'Henüz depolama konumu yok. İlk rafınızı veya çekmecenizi oluşturun.',
+    manage: 'Konumlar',
+    createPlaceholder: 'örn. Raf A, Çekmece 1',
+    nameRequired: 'Konum adı gerekli',
+    created: 'Konum oluşturuldu',
+    updated: 'Konum güncellendi',
+    deleted: 'Konum silindi',
+    saveFailed: 'Konum kaydedilemedi',
+    deleteFailed: 'Konum silinemedi',
+    deleteBlocked: 'Silmeden önce tüm makaraları bu konumdan kaldırın',
+    confirmDelete: '"{{name}}" silinsin mi?',
+    confirmDeleteMessage: 'Bu konum katalogdan kaldırılacak. Makaralar önce taşınmalıdır.',
+  },
+
   // Envanter
   inventory: {
     title: 'Makara Envanteri',
