@@ -12,6 +12,7 @@ from backend.app.core.auth import RequireCameraStreamTokenIfAuthEnabled, Require
 from backend.app.core.config import settings
 from backend.app.core.database import get_db
 from backend.app.core.permissions import Permission
+from backend.app.core.tasks import spawn_background_task
 from backend.app.models.ams_label import AmsLabel
 from backend.app.models.printer import Printer
 from backend.app.models.slot_preset import SlotPresetMapping
@@ -182,14 +183,19 @@ async def get_available_filaments(
                 tray_type = tray.get("tray_type")
                 if not tray_type:
                     continue
-                tray_color = tray.get("tray_color", "")
-                # Normalize color: remove alpha, add hash
-                hex_color = tray_color.replace("#", "")[:6] if tray_color else "808080"
-                color = f"#{hex_color}"
+                tray_color = tray.get("tray_color", "") or "808080"
+                # Preserve the full RRGGBBAA so transparent filament (alpha=00)
+                # reaches the frontend instead of collapsing to #000000 → black
+                # (#1545). Opaque colours still round-trip as #RRGGBB. The
+                # dedup key uses the 6-char RGB so two slots that share an RGB
+                # but differ only in alpha still merge.
+                stripped = tray_color.replace("#", "")
+                rgb = stripped[:6].lower() or "808080"
+                color = f"#{stripped}"
                 tray_info_idx = tray.get("tray_info_idx", "")
                 tray_sub_brands = tray.get("tray_sub_brands", "") or ""
 
-                key = (tray_type.upper(), hex_color.lower(), tray_sub_brands.upper(), extruder_id)
+                key = (tray_type.upper(), rgb, tray_sub_brands.upper(), extruder_id)
                 if key not in seen:
                     seen.add(key)
                     filaments.append(
@@ -207,15 +213,17 @@ async def get_available_filaments(
             vt_type = vt.get("tray_type")
             if not vt_type:
                 continue
-            vt_color = vt.get("tray_color", "")
-            hex_color = vt_color.replace("#", "")[:6] if vt_color else "808080"
-            color = f"#{hex_color}"
+            vt_color = vt.get("tray_color", "") or "808080"
+            # Same alpha-preserving handling as the AMS branch — see #1545.
+            stripped = vt_color.replace("#", "")
+            rgb = stripped[:6].lower() or "808080"
+            color = f"#{stripped}"
             tray_info_idx = vt.get("tray_info_idx", "")
             tray_sub_brands = vt.get("tray_sub_brands", "") or ""
             vt_id = int(vt.get("id", 254))
             extruder_id = (255 - vt_id) if ams_extruder_map else None
 
-            key = (vt_type.upper(), hex_color.lower(), tray_sub_brands.upper(), extruder_id)
+            key = (vt_type.upper(), rgb, tray_sub_brands.upper(), extruder_id)
             if key not in seen:
                 seen.add(key)
                 filaments.append(
@@ -796,12 +804,25 @@ async def diagnose_printer(
     _=RequirePermissionIfAuthEnabled(Permission.PRINTERS_READ),
     db: AsyncSession = Depends(get_db),
 ):
-    """Run connection diagnostics for an existing saved printer."""
+    """Run connection diagnostics for an existing saved printer.
+
+    On-demand run from the UI: wait up to PUBLISH_WAIT_DEFAULT seconds for the
+    printer to publish a status report so a fresh reconnect (counter reset to
+    0) isn't reported as `printer_publishing: fail` prematurely. The support
+    package code path calls run_connection_diagnostic without the wait so
+    bundling stays fast.
+    """
+    from backend.app.services.printer_diagnostic import PUBLISH_WAIT_DEFAULT
+
     result = await db.execute(select(Printer).where(Printer.id == printer_id))
     printer = result.scalar_one_or_none()
     if not printer:
         raise HTTPException(404, "Printer not found")
-    return await run_connection_diagnostic(printer.ip_address, printer=printer)
+    return await run_connection_diagnostic(
+        printer.ip_address,
+        printer=printer,
+        wait_for_publish_seconds=PUBLISH_WAIT_DEFAULT,
+    )
 
 
 # Cache for cover images (printer_id -> {(subtask_name, view_key) -> image_bytes}).
@@ -3100,7 +3121,10 @@ async def refresh_ams_slot(
         raise HTTPException(400, message)
 
     # Apply PA profile after delay (RFID re-read takes a few seconds)
-    asyncio.create_task(_apply_pa_after_refresh(printer_id, ams_id, slot_id))
+    spawn_background_task(
+        _apply_pa_after_refresh(printer_id, ams_id, slot_id),
+        name=f"apply-pa-after-refresh-{printer_id}-{ams_id}-{slot_id}",
+    )
 
     return {"success": True, "message": message}
 

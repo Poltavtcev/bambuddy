@@ -142,6 +142,7 @@ function isAlwaysAllowedIdentical(value) {
 const DE_COGNATES = [
   'Name', 'Status', 'Tag', 'Tags', 'Online', 'Offline', 'Standard', 'Modus',
   'Stop', 'Reset', 'Test', 'Code', 'Token', 'Server', 'Port', 'Bug', 'Job',
+  'Bambu Cloud', 'Orca Cloud',  // brand names — same in every locale
   'Pause', 'Power', 'System', 'Problem', 'Designer', 'Extruder', 'Firmware',
   'Material', 'Original', 'Position', 'Webhook', 'Workflow', 'Slicer',
   'Region', 'Normal', 'Orange', 'Branch', 'Budget', 'Commit', 'Global',
@@ -169,6 +170,7 @@ const DE_COGNATES = [
 
 // French cognates — many UI labels overlap with English exactly.
 const FR_COGNATES = [
+  'Bambu Cloud', 'Orca Cloud',  // brand names — same in every locale
   'Status', 'Tag', 'Tags', 'Online', 'Offline', 'Standard', 'Filament',
   'Filaments', 'Software', 'Hardware', 'Stop', 'Reset', 'Test', 'Code',
   'Token', 'Server', 'Port', 'Plate', 'Layer', 'Active', 'Total', 'Avatar',
@@ -205,6 +207,8 @@ const FR_COGNATES = [
 
 // Italian cognates.
 const IT_COGNATES = [
+  'Bambu Cloud', 'Orca Cloud',  // brand names — same in every locale
+  'Email',  // common loanword in Italian, used verbatim in UI labels
   'Status', 'Tag', 'Tags', 'Online', 'Offline', 'Standard', 'Filament',
   'Filaments', 'Software', 'Hardware', 'Stop', 'Reset', 'Test', 'Code',
   'Token', 'Server', 'Port', 'Plate', 'Layer', 'Modal', 'Pin', 'Pro', 'Mini',
@@ -232,6 +236,7 @@ const IT_COGNATES = [
 // everything needs translation. Only true loanwords / proper nouns stay.
 const JA_COGNATES = [
   'OK', 'Bambu', 'Code',
+  'Bambu Cloud', 'Orca Cloud',  // brand names — same in every locale
   'EU (DD/MM/YYYY)', 'US (MM/DD/YYYY)', 'ON, true, 1',
   '({{count}}/8)', 'Custom Headers (JSON)',
   'Box label (62 × 29 mm)',
@@ -242,6 +247,7 @@ const JA_COGNATES = [
 
 // Portuguese (BR) cognates.
 const PT_BR_COGNATES = [
+  'Bambu Cloud', 'Orca Cloud',  // brand names — same in every locale
   'Status', 'Tag', 'Tags', 'Online', 'Offline', 'Standard', 'Filament',
   'Software', 'Hardware', 'Stop', 'Reset', 'Test', 'Code', 'Token', 'Server',
   'Port', 'Plate', 'Layer', 'Modal', 'Pin', 'Pro', 'Mini', 'Studio', 'Cache',
@@ -269,6 +275,7 @@ const PT_BR_COGNATES = [
 // Chinese (Simplified): very few cognates beyond brand names.
 const ZH_CN_COGNATES = [
   'OK', 'Bambu',
+  'Bambu Cloud', 'Orca Cloud',  // brand names — same in every locale
   '({{count}}/8)', 'Custom Headers (JSON)',
   'Box label (62 × 29 mm)',
   'Avery L7160 — A4 sheet (38.1 × 63.5 mm × 21)',
@@ -278,6 +285,7 @@ const ZH_CN_COGNATES = [
 
 const ZH_TW_COGNATES = [
   'OK', 'Bambu',
+  'Bambu Cloud', 'Orca Cloud',  // brand names — same in every locale
   '({{count}}/8)', 'Custom Headers (JSON)',
   'Box label (62 × 29 mm)',
   'Avery L7160 — A4 sheet (38.1 × 63.5 mm × 21)',
@@ -285,8 +293,28 @@ const ZH_TW_COGNATES = [
   'EC984C,#6CD4BC,A66EB9,D87694',
 ];
 
+// Korean: script difference means almost nothing is identical.
+// Allow loanwords/acronyms, format strings, and proper nouns that stay verbatim.
+const KO_COGNATES = [
+  'OK', 'Bambu', 'N/A',
+  'Bambu Cloud', 'Orca Cloud',  // brand names — same in every locale
+  '({{count}}/8)', '(25%, 50%, 75%)',
+  'Custom Headers (JSON)',
+  'Box label (62 × 29 mm)',
+  'Avery L7160 — A4 sheet (38.1 × 63.5 mm × 21)',
+  'Avery 5160 — US Letter sheet (25.4 × 66.7 mm × 30)',
+  'EC984C,#6CD4BC,A66EB9,D87694',
+  '{{weight}}g',                                      // unit suffix format string
+  'MakerWorld: {{designer}}',                         // brand + placeholder
+  'email',                                            // OIDC claim name placeholder
+  '{{printer}}: {{error}}',                           // pure placeholders
+  '{{name}} — {{stage}} ({{percent}}%) — {{elapsed}}', // pure placeholders
+  'Obico ML API URL',                                 // product name (Obico)
+];
+
 // Spanish cognates — words/phrases that are genuinely identical in Spanish.
 const ES_COGNATES = [
+  'Bambu Cloud', 'Orca Cloud',  // brand names — same in every locale
   'Error', 'Firmware', 'General', 'Control', 'Total', 'total', 'Material',
   'Material:', 'Color', 'Hex', 'Local', 'Global', 'China', 'Editable',
   'Normal', 'Metal', 'Multicolor', 'Proxy', 'Host', 'Factor', 'Original',
@@ -301,15 +329,31 @@ const ES_COGNATES = [
   'Avery 5160 — US Letter sheet (25.4 × 66.7 mm × 30)',
 ];
 
+// Turkish cognates — technical UI labels that Turkish speakers use verbatim
+// from English (loanwords + acronyms + format strings). Curated, not a shortcut.
+const TR_COGNATES = [
+  'Filament', 'Firmware', 'Disk', 'Hex', 'Test', 'Port', 'Model', 'Metal',
+  'Bambu Cloud', 'Orca Cloud',  // brand names — same in every locale
+  'Min', 'Normal', 'Platform', 'Net', 'Trend', 'Commit', 'Global', 'Proxy',
+  'N/A', 'email',
+  'STARTTLS (Port 587)', 'SSL/TLS (Port 465)',
+  '({{count}}/8)', 'Hex: #{{hex}}', 'MakerWorld: {{designer}}',
+  '{{count}} filament', '{{printer}}: {{error}}', '{{weight}}g',
+  'Filament {{index}} ({{type}})',
+  'EC984C,#6CD4BC,A66EB9,D87694',
+];
+
 const IDENTICAL_TO_EN_ALLOWED = {
   de: new Set(DE_COGNATES),
   fr: new Set(FR_COGNATES),
   it: new Set(IT_COGNATES),
   ja: new Set(JA_COGNATES),
+  ko: new Set(KO_COGNATES),
   es: new Set(ES_COGNATES),
   'pt-BR': new Set(PT_BR_COGNATES),
   'zh-CN': new Set(ZH_CN_COGNATES),
   'zh-TW': new Set(ZH_TW_COGNATES),
+  tr: new Set(TR_COGNATES),
 };
 
 // Pure comparison logic, exported so tests can verify each failure mode

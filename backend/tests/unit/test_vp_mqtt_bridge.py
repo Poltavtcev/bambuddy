@@ -2,12 +2,19 @@
 
 import asyncio
 import json
+import logging
+import socket
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.app.services.virtual_printer.mqtt_bridge import MQTTBridge, _ip_to_uint32_le
+from backend.app.services.virtual_printer.mqtt_bridge import (
+    MQTTBridge,
+    _ip_to_uint32_le,
+    _resolve_host_interface_for_target,
+    _resolve_target_to_ipv4,
+)
 from backend.app.services.virtual_printer.mqtt_server import SimpleMQTTServer
 
 H2D_SERIAL = "0948BB540200427"
@@ -217,6 +224,95 @@ class TestPushStatusCache:
         cached = bridge.get_latest_print_state()
         assert cached["net"]["info"][0]["ip"] == vp_le
         assert cached["net"]["info"][1]["ip"] == 0  # untouched
+
+        await bridge.stop()
+
+    @pytest.mark.asyncio
+    async def test_net_info_ip_rewritten_for_unknown_secondary_interface(self):
+        """Regression for #1429: real printers (X1C / H2D Pro) report multiple
+        active interfaces (WiFi + Ethernet) — only ONE matches the IP Bambuddy
+        tracks. The rewrite must catch every non-zero entry, not just the one
+        whose IP equals `_target_ip_uint32_le`, or the slicer's FTP fallback
+        path leaks straight to the real printer."""
+        server = _make_server(bind_address=VP_IP)
+        bridge = _make_bridge(server)
+        await bridge.start()
+
+        h2d_le = _ip_to_uint32_le(H2D_IP)
+        # A second IP Bambuddy never saw (e.g. printer's ethernet interface
+        # while Bambuddy talks over wifi).
+        other_le = _ip_to_uint32_le("192.168.99.42")
+        vp_le = _ip_to_uint32_le(VP_IP)
+        payload = json.dumps(
+            {
+                "print": {
+                    "command": "push_status",
+                    "net": {
+                        "info": [
+                            {"ip": h2d_le, "mask": 0xFFFFFF},
+                            {"ip": other_le, "mask": 0xFFFFFF},
+                            {"ip": 0, "mask": 0},
+                        ]
+                    },
+                }
+            }
+        ).encode()
+        bridge._on_printer_raw(f"device/{H2D_SERIAL}/report", payload)
+        await asyncio.sleep(0.01)
+
+        cached = bridge.get_latest_print_state()
+        assert cached["net"]["info"][0]["ip"] == vp_le
+        assert cached["net"]["info"][1]["ip"] == vp_le  # secondary interface also rewritten
+        assert cached["net"]["info"][2]["ip"] == 0  # placeholder untouched
+
+        await bridge.stop()
+
+    @pytest.mark.asyncio
+    async def test_late_arriving_printer_ip_rewrites_existing_cache(self):
+        """Regression for #1429: if the printer's `ip_address` is empty at
+        first bind (DB row stale, or the client object exists before the
+        first SSDP refresh fills it in), the rewrite stays disabled and the
+        first cached push poisons the cache with the real-printer IP.
+        Once `ip_address` becomes valid, the next refresh tick must (a) arm
+        the encoding and (b) sweep the cached `net.info[].ip` so the slicer
+        sees the rewritten value on its next pull. Without the sweep the
+        sticky-key preservation keeps the poisoned value alive across
+        every subsequent incremental push."""
+        server = _make_server(bind_address=VP_IP)
+        # Bind to a client whose ip_address is empty at start — simulates the
+        # late-arrival path.
+        target = _make_paho_client(ip="")
+        bridge = _make_bridge(server, target)
+        await bridge.start()
+        assert bridge._target_ip_uint32_le is None  # not yet armed
+
+        h2d_le = _ip_to_uint32_le(H2D_IP)
+        vp_le = _ip_to_uint32_le(VP_IP)
+        payload = json.dumps(
+            {
+                "print": {
+                    "command": "push_status",
+                    "net": {"info": [{"ip": h2d_le, "mask": 0xFFFFFF}]},
+                }
+            }
+        ).encode()
+        bridge._on_printer_raw(f"device/{H2D_SERIAL}/report", payload)
+        await asyncio.sleep(0.01)
+
+        # First push landed before encoding was armed → cache holds real IP.
+        cached = bridge.get_latest_print_state()
+        assert cached["net"]["info"][0]["ip"] == h2d_le
+
+        # Printer's IP becomes known. Next refresh tick must self-heal.
+        target.ip_address = H2D_IP
+        bridge._resolve_client()
+
+        cached = bridge.get_latest_print_state()
+        assert cached["net"]["info"][0]["ip"] == vp_le, (
+            "cache must be swept once encoding becomes valid; sticky-key "
+            "preservation would otherwise keep the poisoned IP forever"
+        )
+        assert bridge._target_ip_uint32_le == h2d_le
 
         await bridge.stop()
 
@@ -774,6 +870,48 @@ class TestStatusReportCachedAsBase:
         assert payload["print"]["gcode_state"] == "PREPARE"
         assert payload["print"]["gcode_file"] == "foo.3mf"
 
+    @pytest.mark.asyncio
+    async def test_live_progress_fields_zeroed_in_cached_branch(self):
+        """#1558: when the real target printer is mid-print, the cached
+        push_status carries live values for mc_percent / stg_cur / layer_num /
+        etc. BambuStudio's Send pre-flight reads any of these as "VP busy"
+        even when gcode_state above is forced to IDLE — blocking Send while
+        the target prints. The cached branch must override these to the same
+        idle values the synthetic stub uses.
+        """
+        server = _make_server()
+        bridge = MagicMock()
+        # Real printer mid-print state: gcode_state may be RUNNING upstream,
+        # but the VP's own _gcode_state is IDLE (Send is requesting a
+        # new upload, the VP isn't running anything).
+        bridge.get_latest_print_state.return_value = {
+            "command": "push_status",
+            "msg": 0,
+            "gcode_state": "RUNNING",
+            "mc_print_stage": "2",
+            "mc_percent": 47,
+            "mc_remaining_time": 3600,
+            "stg": [1, 2, 3],
+            "stg_cur": 14,
+            "layer_num": 120,
+            "total_layer_num": 250,
+            "print_error": 0,
+        }
+        server.set_bridge(bridge)
+        published = self._capture_published(server)
+
+        await server._send_status_report(MagicMock())
+        _serial, payload = published[0]
+        # Every live-progress field must reflect "idle / VP isn't busy".
+        assert payload["print"]["mc_print_stage"] == ""
+        assert payload["print"]["mc_percent"] == 0
+        assert payload["print"]["mc_remaining_time"] == 0
+        assert payload["print"]["stg"] == []
+        assert payload["print"]["stg_cur"] == 0
+        assert payload["print"]["layer_num"] == 0
+        assert payload["print"]["total_layer_num"] == 0
+        assert payload["print"]["print_error"] == 0
+
 
 # ---------------------------------------------------------------------------
 # Wire format
@@ -950,3 +1088,247 @@ class TestIpEncoding:
     def test_invalid_ip_raises(self):
         with pytest.raises(ValueError):
             _ip_to_uint32_le("not.an.ip.actually")
+
+
+class TestHostnameResolution:
+    """#1429 follow-up: users who configured the printer by FQDN (common on
+    LANs with router-provided DNS like `p1s.fritz.box`) hit `invalid IPv4`
+    on the encoder and the rewrite never armed — slicer kept FTPing direct
+    to the real printer. The bridge now resolves hostname→IPv4 first."""
+
+    def test_pass_through_for_valid_ipv4(self):
+        assert _resolve_target_to_ipv4("192.168.1.50") == "192.168.1.50"
+
+    def test_empty_returns_none(self):
+        assert _resolve_target_to_ipv4("") is None
+        assert _resolve_target_to_ipv4(None) is None  # type: ignore[arg-type]
+
+    def test_hostname_resolves_via_getaddrinfo(self):
+        with patch(
+            "backend.app.services.virtual_printer.mqtt_bridge.socket.getaddrinfo",
+            return_value=[(2, 1, 6, "", ("192.168.3.153", 0))],
+        ) as mock_gai:
+            assert _resolve_target_to_ipv4("p1s.fritz.box") == "192.168.3.153"
+        # AF_INET filter prevents an IPv6-only result from being picked,
+        # since net.info[*].ip is a uint32 LE that can't carry v6.
+        assert mock_gai.call_args.kwargs.get("family") == socket.AF_INET
+
+    def test_dns_failure_returns_none(self):
+        with patch(
+            "backend.app.services.virtual_printer.mqtt_bridge.socket.getaddrinfo",
+            side_effect=OSError("Name or service not known"),
+        ):
+            assert _resolve_target_to_ipv4("nope.invalid") is None
+
+    def test_fqdn_target_arms_encoding(self, caplog):
+        """End-to-end: a client whose `ip_address` is an FQDN should arm
+        the bridge once DNS resolves, and the cached rewrite uses the
+        resolved IPv4 (not the hostname string) for the `net.info[].ip`
+        encoding."""
+        server = _make_server(bind_address=VP_IP)
+        bridge = _make_bridge(server)
+        client = _make_paho_client(ip="p1s.fritz.box")
+        bridge._target_client = client
+        with (
+            patch(
+                "backend.app.services.virtual_printer.mqtt_bridge.socket.getaddrinfo",
+                return_value=[(2, 1, 6, "", (H2D_IP, 0))],
+            ),
+            caplog.at_level(logging.INFO, logger="backend.app.services.virtual_printer.mqtt_bridge"),
+        ):
+            bridge._refresh_ip_encoding()
+        assert bridge._target_ip_uint32_le == _ip_to_uint32_le(H2D_IP)
+        assert bridge._vp_ip_uint32_le == _ip_to_uint32_le(VP_IP)
+        armed = [r for r in caplog.records if "MQTT bridge IP encoding armed" in r.getMessage()]
+        assert len(armed) == 1
+        # Operator should see configured→resolved in the log line so a
+        # bad-DNS regression is immediately legible.
+        assert "p1s.fritz.box→192.168.255.133" in armed[0].getMessage()
+
+
+# ---------------------------------------------------------------------------
+# Auto-resolve fallback for default-config (bind_address = "0.0.0.0")
+# ---------------------------------------------------------------------------
+
+
+class TestBindAddressAutoResolve:
+    """#1429 residual: VPs created without a dedicated bind IP run on
+    `bind_address=0.0.0.0`. The original fix's `_refresh_ip_encoding`
+    early-returned on 0.0.0.0, so the rewrite never armed and `net.info[].ip`
+    kept leaking the real printer IP. Now the bridge auto-resolves a host
+    interface in the printer's subnet and uses that as the VP IP."""
+
+    @pytest.mark.asyncio
+    async def test_rewrite_arms_via_auto_resolved_host_ip(self):
+        """When bind_address is 0.0.0.0, fall back to the host interface in
+        the target printer's subnet and rewrite to that IP."""
+        server = _make_server(bind_address="0.0.0.0")  # nosec B104
+        bridge = _make_bridge(server)
+        with patch(
+            "backend.app.services.virtual_printer.mqtt_bridge._resolve_host_interface_for_target",
+            return_value=VP_IP,
+        ):
+            await bridge.start()
+
+            h2d_le = _ip_to_uint32_le(H2D_IP)
+            vp_le = _ip_to_uint32_le(VP_IP)
+            payload = json.dumps(
+                {
+                    "print": {
+                        "command": "push_status",
+                        "net": {"info": [{"ip": h2d_le, "mask": 0xFFFFFF}]},
+                    }
+                }
+            ).encode()
+            bridge._on_printer_raw(f"device/{H2D_SERIAL}/report", payload)
+            await asyncio.sleep(0.01)
+
+            cached = bridge.get_latest_print_state()
+            assert cached["net"]["info"][0]["ip"] == vp_le
+            assert bridge._vp_ip_uint32_le == vp_le
+
+            await bridge.stop()
+
+    @pytest.mark.asyncio
+    async def test_rewrite_disabled_when_no_matching_host_interface(self):
+        """If no host interface shares a subnet with the printer, the bridge
+        cannot pick a sensible VP IP — leave encoding unarmed and let the
+        push through unrewritten (no crash, no wrong rewrite)."""
+        server = _make_server(bind_address="")
+        bridge = _make_bridge(server)
+        with patch(
+            "backend.app.services.virtual_printer.mqtt_bridge._resolve_host_interface_for_target",
+            return_value=None,
+        ):
+            await bridge.start()
+
+            h2d_le = _ip_to_uint32_le(H2D_IP)
+            payload = json.dumps(
+                {
+                    "print": {
+                        "command": "push_status",
+                        "net": {"info": [{"ip": h2d_le, "mask": 0xFFFFFF}]},
+                    }
+                }
+            ).encode()
+            bridge._on_printer_raw(f"device/{H2D_SERIAL}/report", payload)
+            await asyncio.sleep(0.01)
+
+            assert bridge._vp_ip_uint32_le is None
+            assert bridge._target_ip_uint32_le is None
+
+            await bridge.stop()
+
+    @pytest.mark.asyncio
+    async def test_explicit_bind_ip_takes_precedence_over_auto_resolve(self):
+        """Auto-resolve only kicks in when bind_address is empty/0.0.0.0; an
+        explicitly-set bind IP must be used verbatim even if there's also a
+        same-subnet host interface."""
+        server = _make_server(bind_address=VP_IP)
+        bridge = _make_bridge(server)
+        # Auto-resolver would have returned a DIFFERENT IP — we must not use it.
+        with patch(
+            "backend.app.services.virtual_printer.mqtt_bridge._resolve_host_interface_for_target",
+            return_value="10.99.99.99",
+        ):
+            await bridge.start()
+            assert bridge._vp_ip_uint32_le == _ip_to_uint32_le(VP_IP)
+            await bridge.stop()
+
+    def test_resolve_helper_returns_none_for_unreachable_target(self):
+        """The helper itself must be defensive — if `find_interface_for_ip`
+        raises or returns None, we get None (no crash)."""
+        with patch(
+            "backend.app.services.network_utils.find_interface_for_ip",
+            return_value=None,
+        ):
+            assert _resolve_host_interface_for_target("203.0.113.1") is None
+
+
+class TestNotArmedDiagnosticLogging:
+    """#1429 follow-up: every silent early-return in `_refresh_ip_encoding`
+    now emits one INFO line explaining WHY the rewrite couldn't arm. Throttled
+    to one line per state change so an idle unarmed bridge doesn't spam the
+    log every 30s tick. Cleared on arm so a future failure re-emits.
+    """
+
+    def test_no_client_logs_once(self, caplog):
+        bridge = _make_bridge(_make_server())
+        # Force the "no client" path: bridge starts with _target_client=None.
+        assert bridge._target_client is None
+        with caplog.at_level(logging.INFO, logger="backend.app.services.virtual_printer.mqtt_bridge"):
+            bridge._refresh_ip_encoding()
+            bridge._refresh_ip_encoding()  # 2nd tick — same reason, must NOT re-log.
+            bridge._refresh_ip_encoding()
+        not_armed = [r for r in caplog.records if "NOT armed" in r.getMessage()]
+        assert len(not_armed) == 1
+        assert "target_client is None" in not_armed[0].getMessage()
+
+    def test_missing_target_ip_logs_specific_reason(self, caplog):
+        bridge = _make_bridge(_make_server())
+        # Manually attach a client with no ip_address (simulates pre-DHCP).
+        client = _make_paho_client()
+        client.ip_address = ""
+        bridge._target_client = client
+        with caplog.at_level(logging.INFO, logger="backend.app.services.virtual_printer.mqtt_bridge"):
+            bridge._refresh_ip_encoding()
+        not_armed = [r for r in caplog.records if "NOT armed" in r.getMessage()]
+        assert len(not_armed) == 1
+        assert "no ip_address" in not_armed[0].getMessage()
+
+    def test_no_matching_host_interface_logs_specific_reason(self, caplog):
+        server = _make_server(bind_address="0.0.0.0")  # nosec B104
+        bridge = _make_bridge(server)
+        with (
+            patch(
+                "backend.app.services.virtual_printer.mqtt_bridge._resolve_host_interface_for_target",
+                return_value=None,
+            ),
+            caplog.at_level(logging.INFO, logger="backend.app.services.virtual_printer.mqtt_bridge"),
+        ):
+            bridge._target_client = _make_paho_client()
+            bridge._refresh_ip_encoding()
+        not_armed = [r for r in caplog.records if "NOT armed" in r.getMessage()]
+        assert len(not_armed) == 1
+        msg = not_armed[0].getMessage()
+        assert H2D_IP in msg
+        assert "no host interface" in msg
+
+    def test_unresolvable_target_logs_reason(self, caplog):
+        """When `ip_address` isn't a valid IPv4 *and* doesn't resolve via DNS,
+        the bridge must report a single concrete not-armed reason naming the
+        configured value — operator can then see exactly what input failed."""
+        server = _make_server(bind_address=VP_IP)
+        bridge = _make_bridge(server)
+        client = _make_paho_client()
+        client.ip_address = "not.an.ip"
+        bridge._target_client = client
+        with (
+            patch(
+                "backend.app.services.virtual_printer.mqtt_bridge.socket.getaddrinfo",
+                side_effect=OSError("nodename nor servname provided"),
+            ),
+            caplog.at_level(logging.INFO, logger="backend.app.services.virtual_printer.mqtt_bridge"),
+        ):
+            bridge._refresh_ip_encoding()
+        not_armed = [r for r in caplog.records if "NOT armed" in r.getMessage()]
+        assert len(not_armed) == 1
+        assert "could not resolve printer host 'not.an.ip'" in not_armed[0].getMessage()
+
+    def test_successful_arm_clears_dedup_so_future_failure_relogs(self, caplog):
+        """After a successful arm, the dedup must reset so a subsequent
+        regression (e.g. printer client unbinds) re-emits the diagnostic
+        line instead of being silenced by the previous failure reason."""
+        bridge = _make_bridge(_make_server(bind_address=VP_IP))
+        bridge._target_client = _make_paho_client()
+        with caplog.at_level(logging.INFO, logger="backend.app.services.virtual_printer.mqtt_bridge"):
+            bridge._refresh_ip_encoding()  # arms
+            assert bridge._not_armed_reason is None
+            # Simulate a regression — target_client drops away.
+            bridge._target_client = None
+            bridge._refresh_ip_encoding()
+            bridge._refresh_ip_encoding()  # 2nd same-reason tick must not re-log
+        not_armed = [r for r in caplog.records if "NOT armed" in r.getMessage()]
+        assert len(not_armed) == 1  # the post-arm failure
+        armed = [r for r in caplog.records if "MQTT bridge IP encoding armed" in r.getMessage()]
+        assert len(armed) == 1

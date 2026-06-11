@@ -134,6 +134,7 @@ async def _build_settings_response(db: AsyncSession, is_api_key: bool = False) -
             "default_vibration_cali",
             "default_layer_inspect",
             "default_timelapse",
+            "default_nozzle_offset_cali",
             "ldap_enabled",
             "ldap_auto_provision",
         ]:
@@ -162,6 +163,11 @@ async def _build_settings_response(db: AsyncSession, is_api_key: bool = False) -
             settings_dict[setting.key] = int(setting.value)
         elif setting.key == "default_printer_id":
             settings_dict[setting.key] = int(setting.value) if setting.value and setting.value != "None" else None
+        elif setting.key == "open_in_slicer":
+            # None means "inherit from preferred_slicer" (#1329). The PUT path
+            # serializes None as the literal string "None"; strip it back so
+            # the frontend sees a true null and falls back as intended.
+            settings_dict[setting.key] = setting.value if setting.value and setting.value != "None" else None
         else:
             settings_dict[setting.key] = setting.value
 
@@ -361,12 +367,20 @@ async def get_ui_preferences(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/check-ffmpeg")
-async def check_ffmpeg():
-    """Check if ffmpeg is installed and available."""
+async def check_ffmpeg(
+    _: User | None = RequirePermissionIfAuthEnabled(Permission.SETTINGS_READ),
+):
+    """Check if ffmpeg is installed and available.
+
+    Gated on ``SETTINGS_READ`` (audit finding I4 — the binary path was
+    leaking the host filesystem layout to unauthenticated callers).
+    ``require_permission_if_auth_enabled`` returns ``None`` only when
+    auth is disabled (in which case there's no privacy boundary to
+    enforce); otherwise it raises 401/403 before we get here.
+    """
     from backend.app.services.camera import get_ffmpeg_path
 
     ffmpeg_path = get_ffmpeg_path()
-
     return {
         "installed": ffmpeg_path is not None,
         "path": ffmpeg_path,
@@ -565,7 +579,9 @@ async def create_backup_zip(output_path: Path | None = None) -> tuple[Path, str]
         for name, src_dir in dirs_to_backup:
             if src_dir.exists() and any(src_dir.iterdir()):
                 try:
-                    shutil.copytree(src_dir, temp_path / name)
+                    shutil.copytree(
+                        src_dir, temp_path / name
+                    )  # SEC-PATH-OK: name iterates the dirs_to_backup tuple of constant strings ("archive", "virtual_printer", ...)
                 except shutil.Error as e:
                     logger.warning("Some files in %s could not be copied: %s", name, e)
                 except PermissionError as e:
@@ -591,7 +607,9 @@ async def create_backup_zip(output_path: Path | None = None) -> tuple[Path, str]
 
         # Create ZIP
         if output_path is not None:
-            zip_file = output_path / filename
+            zip_file = (
+                output_path / filename
+            )  # SEC-PATH-OK: filename = f"bambuddy-backup-{datetime.now()...}.zip" generated in create_backup_zip itself
         else:
             fd, tmp = tempfile.mkstemp(suffix=".zip")
             os.close(fd)
@@ -676,6 +694,15 @@ async def _import_sqlite_to_postgres(sqlite_path: Path, postgres_url: str):
                     table.constraints.discard(fk)
 
         async with pg_engine.begin() as conn:
+            # Cap how long DROP TABLE will wait for AccessExclusiveLock so
+            # any residual concurrent writer (per-printer MQTT clients
+            # writing reactively, an AMS history recorder firing on its
+            # hourly cadence) surfaces a fast `lock_timeout` error instead
+            # of blocking the restore for 30 s or producing a deadlock.
+            # SET LOCAL scopes to this transaction only; outside this
+            # restore path the global default (no timeout) applies.
+            await conn.execute(text("SET LOCAL lock_timeout = '10s'"))
+
             # Drop every existing table in the public schema with CASCADE
             # rather than `metadata.drop_all`. Two reasons:
             #   1. The user's live DB may carry orphan tables from removed
@@ -861,7 +888,9 @@ async def restore_backup(
                     # Reject path-traversal payloads: any entry whose resolved
                     # path escapes temp_path would allow writing arbitrary files
                     # on the host (ZipSlip / CVE-2006-5456).
-                    dest = (temp_path / name).resolve()
+                    dest = (
+                        temp_path / name
+                    ).resolve()  # SEC-PATH-OK: is_relative_to containment check below before extractall
                     # is_relative_to (Python 3.9+) covers both relative
                     # path-traversal (../etc/passwd) and absolute-path overrides
                     # (/etc/passwd) — str.startswith was vulnerable to
@@ -889,6 +918,35 @@ async def restore_backup(
                     await asyncio.sleep(1)
             except Exception as e:
                 logger.warning("Failed to stop virtual printer: %s", e)
+
+            # 3b. Pause timer-based background services BEFORE the DB swap.
+            # close_all_connections() below only disposes the engine's pool,
+            # not the asyncio tasks that opened sessions from it. The print
+            # scheduler (30 s cadence), smart-plug snapshot loop (30 s),
+            # notification digest loop, and background dispatch worker all
+            # wake up and call async_session(), which lazily re-creates a
+            # pool connection holding RowExclusiveLock on print_queue /
+            # smart_plug_energy_snapshots / etc. The DROP TABLE CASCADE
+            # pass in the PostgreSQL restore path needs AccessExclusiveLock
+            # on every public table, producing an AB/BA deadlock and a
+            # full restore rollback. Successful restore already requires a
+            # container restart, so we don't restart the services here.
+            try:
+                from backend.app.services.background_dispatch import background_dispatch
+                from backend.app.services.notification_service import notification_service
+                from backend.app.services.print_scheduler import scheduler as print_scheduler
+                from backend.app.services.smart_plug_manager import smart_plug_manager
+
+                logger.info("Pausing background services for restore...")
+                print_scheduler.stop()
+                smart_plug_manager.stop_scheduler()
+                notification_service.stop_digest_scheduler()
+                await background_dispatch.stop()
+                # In-flight loop iterations need a moment to commit + release
+                # their DB sessions before we dispose() the engine pool.
+                await asyncio.sleep(1.0)
+            except Exception as e:
+                logger.warning("Could not cleanly pause background services: %s", e)
 
             # 4. Close current database connections
             logger.info("Closing database connections...")
@@ -995,7 +1053,9 @@ async def restore_backup(
 
             skipped_dirs = []
             for name, dest_dir in dirs_to_restore:
-                src_dir = temp_path / name
+                src_dir = (
+                    temp_path / name
+                )  # SEC-PATH-OK: name iterates the dirs_to_restore tuple of constant strings ("archive", "virtual_printer", ...)
                 if src_dir.exists():
                     logger.info("Restoring %s directory...", name)
                     try:
@@ -1108,10 +1168,14 @@ async def get_virtual_printer_settings(
     tailscale_disabled_raw = await get_setting(db, "virtual_printer_tailscale_disabled")
     archive_name_source = await get_setting(db, "virtual_printer_archive_name_source")
 
+    from backend.app.models.virtual_printer import VP_MODE_ARCHIVE, normalize_vp_mode
+
     return {
         "enabled": enabled == "true" if enabled else False,
         "access_code_set": bool(access_code),
-        "mode": mode or "immediate",
+        # Normalize on read so older settings rows (with `immediate` /
+        # `print_queue`) come out as `archive` / `queue` for the frontend.
+        "mode": normalize_vp_mode(mode) or VP_MODE_ARCHIVE,
         "model": model or DEFAULT_VIRTUAL_PRINTER_MODEL,
         "target_printer_id": int(target_printer_id) if target_printer_id else None,
         "remote_interface_ip": remote_interface_ip or "",
@@ -1152,7 +1216,9 @@ async def update_virtual_printer_settings(
     # Get current values
     current_enabled = await get_setting(db, "virtual_printer_enabled") == "true"
     current_access_code = await get_setting(db, "virtual_printer_access_code") or ""
-    current_mode = await get_setting(db, "virtual_printer_mode") or "immediate"
+    # Default to `archive` (the canonical name) but tolerate legacy `immediate`
+    # in the stored value — normalized later before validation.
+    current_mode = await get_setting(db, "virtual_printer_mode") or "archive"
     current_model = await get_setting(db, "virtual_printer_model") or DEFAULT_VIRTUAL_PRINTER_MODEL
     current_target_id_str = await get_setting(db, "virtual_printer_target_printer_id")
     current_target_id = int(current_target_id_str) if current_target_id_str else None
@@ -1170,15 +1236,21 @@ async def update_virtual_printer_settings(
     new_remote_iface = remote_interface_ip if remote_interface_ip is not None else current_remote_iface
     new_ts_disabled = tailscale_disabled if tailscale_disabled is not None else current_ts_disabled
 
-    # Validate mode
-    # "review" is the new name for "queue" (pending review before archiving)
-    # "print_queue" archives and adds to print queue (unassigned)
-    # "proxy" is transparent TCP proxy to a real printer
-    if new_mode not in ("immediate", "queue", "review", "print_queue", "proxy"):
+    # Validate mode. Canonical wire values are `archive` / `review` / `queue`
+    # / `proxy`; legacy `immediate` and `print_queue` are accepted as aliases
+    # and translated before storage so support bundles stop showing the old
+    # confusing pair (#1429 mode-label discrepancy).
+    from backend.app.models.virtual_printer import VP_MODE_VALUES, normalize_vp_mode
+
+    canonical_mode = normalize_vp_mode(new_mode)
+    if canonical_mode not in VP_MODE_VALUES:
         return JSONResponse(
             status_code=400,
-            content={"detail": "Mode must be 'immediate', 'review', 'print_queue', or 'proxy'"},
+            content={
+                "detail": f"Mode must be one of: {', '.join(VP_MODE_VALUES)}",
+            },
         )
+    new_mode = canonical_mode
 
     # Validate archive_name_source
     if archive_name_source is not None and archive_name_source not in ("metadata", "filename"):
@@ -1186,9 +1258,6 @@ async def update_virtual_printer_settings(
             status_code=400,
             content={"detail": "archive_name_source must be 'metadata' or 'filename'"},
         )
-    # Normalize legacy "queue" to "review" for storage
-    if new_mode == "queue":
-        new_mode = "review"
 
     # Validate model
     if model is not None and model not in VIRTUAL_PRINTER_MODELS:

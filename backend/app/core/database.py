@@ -405,6 +405,26 @@ async def _safe_execute(conn, sql):
             raise
 
 
+async def _api_keys_column_exists(conn, column_name: str) -> bool:
+    """Return True if the named column exists on ``api_keys``.
+
+    Used to gate one-shot data backfills that must run only on the migration
+    that adds a column — without this, repeating the UPDATE on every startup
+    would silently overwrite values the user later edited in the UI.
+    Dialect-specific because SQLite has no information_schema.
+    """
+    from sqlalchemy import text
+
+    if is_sqlite():
+        result = await conn.execute(text("PRAGMA table_info(api_keys)"))
+        return any(row[1] == column_name for row in result)
+    result = await conn.execute(
+        text("SELECT 1 FROM information_schema.columns WHERE table_name = 'api_keys' AND column_name = :col"),
+        {"col": column_name},
+    )
+    return result.scalar_one_or_none() is not None
+
+
 async def _migrate_normalize_printer_ids(conn) -> None:
     from sqlalchemy import text
 
@@ -915,6 +935,17 @@ async def run_migrations(conn):
     else:
         await _safe_execute(conn, "ALTER TABLE print_queue ADD COLUMN filament_short BOOLEAN DEFAULT false")
 
+    # Migration: skip_filament_check flag on print_queue (#1698-followup).
+    # Persists the user's "Print Anyway" acknowledgement so the scheduler
+    # doesn't re-flag the item every tick after they've confirmed dispatch
+    # despite the deficit warning. Set from the start route's skip_filament_check
+    # query param and from PrintModal at queue-creation time. Postgres / SQLite
+    # boolean default branch matches filament_short above.
+    if is_sqlite():
+        await _safe_execute(conn, "ALTER TABLE print_queue ADD COLUMN skip_filament_check BOOLEAN DEFAULT 0")
+    else:
+        await _safe_execute(conn, "ALTER TABLE print_queue ADD COLUMN skip_filament_check BOOLEAN DEFAULT false")
+
     # Migration: Add queue_force_color_match column to virtual_printers (#1188).
     # Opt-in flag: when true, VP queue-mode uploads pin the per-slot type+color
     # from the 3MF onto the queue item's filament_overrides so the scheduler
@@ -1089,6 +1120,12 @@ async def run_migrations(conn):
     await _safe_execute(conn, "ALTER TABLE print_queue ADD COLUMN layer_inspect BOOLEAN DEFAULT 0")
     await _safe_execute(conn, "ALTER TABLE print_queue ADD COLUMN timelapse BOOLEAN DEFAULT 0")
     await _safe_execute(conn, "ALTER TABLE print_queue ADD COLUMN use_ams BOOLEAN DEFAULT 1")
+    # Migration: Add nozzle offset calibration option (dual-nozzle printers, #1682).
+    # Postgres rejects `DEFAULT 1` on a BOOLEAN column — use TRUE / 1 per dialect.
+    if is_sqlite():
+        await _safe_execute(conn, "ALTER TABLE print_queue ADD COLUMN nozzle_offset_cali BOOLEAN DEFAULT 1")
+    else:
+        await _safe_execute(conn, "ALTER TABLE print_queue ADD COLUMN nozzle_offset_cali BOOLEAN DEFAULT TRUE")
 
     # Migration: Add library_file_id column to print_queue and make archive_id nullable
     # This allows queue items to reference library files directly (archive created at print start)
@@ -1639,9 +1676,18 @@ async def run_migrations(conn):
 
                     result = await conn.execute(text("SELECT value FROM settings WHERE key = 'virtual_printer_mode'"))
                     row = result.fetchone()
-                    old_mode = row[0] if row else "immediate"
+                    old_mode = row[0] if row else "archive"
+                    # Translate to canonical wire values (#1429 mode-label
+                    # discrepancy): legacy `immediate` → `archive`, legacy
+                    # `print_queue` → `queue`. The historical `queue` alias
+                    # for `review` predates the canonical rename and is
+                    # preserved (existing user intent was "pending review").
                     if old_mode == "queue":
                         old_mode = "review"
+                    elif old_mode == "immediate":
+                        old_mode = "archive"
+                    elif old_mode == "print_queue":
+                        old_mode = "queue"
 
                     result = await conn.execute(text("SELECT value FROM settings WHERE key = 'virtual_printer_model'"))
                     row = result.fetchone()
@@ -1671,7 +1717,7 @@ async def run_migrations(conn):
                         {
                             "name": "Bambuddy",
                             "enabled": old_enabled,
-                            "mode": old_mode or "immediate",
+                            "mode": old_mode or "archive",
                             "model": old_model,
                             "access_code": old_access_code,
                             "target_id": old_target_id,
@@ -1785,6 +1831,145 @@ async def run_migrations(conn):
             text("UPDATE settings SET value = :new WHERE key = 'virtual_printer_model' AND value = :old"),
             {"old": old_val, "new": new_val},
         )
+
+    # Migration: Rename VP mode wire values to match the user-facing labels
+    # (#1429 follow-up). The UI button "Archive" had always saved `immediate`
+    # and "Queue" had always saved `print_queue` — a mismatch that showed up
+    # confusingly in every support bundle. The button labels stay; the wire
+    # value is what changes. Idempotent: re-running the UPDATE on canonical
+    # values is a no-op. SQLite and Postgres both accept this statement
+    # unchanged (string literal comparison, no driver-specific syntax).
+    vp_mode_renames = [("immediate", "archive"), ("print_queue", "queue")]
+    for old_val, new_val in vp_mode_renames:
+        await conn.execute(
+            text("UPDATE virtual_printers SET mode = :new WHERE mode = :old"),
+            {"old": old_val, "new": new_val},
+        )
+        await conn.execute(
+            text("UPDATE settings SET value = :new WHERE key = 'virtual_printer_mode' AND value = :old"),
+            {"old": old_val, "new": new_val},
+        )
+
+    # Migration: Auto-sync VP access codes from their target printer.
+    # Non-proxy VPs with a target printer (the live-mirror bridge) forward the
+    # slicer's MQTT/RTSPS auth bytes through to the real printer, so the VP's
+    # access code MUST equal the target's — earlier UIs let them diverge,
+    # producing a VP that the slicer could bind but whose bridge silently
+    # failed to authenticate against the real printer. The route layer now
+    # auto-inherits on every create/update; this backfill corrects any rows
+    # that pre-date that change. Idempotent (re-running on synced rows is a
+    # no-op because the WHERE clause excludes them). SQLite and Postgres both
+    # accept correlated subqueries in UPDATE — no driver-specific syntax.
+    mismatch_result = await conn.execute(
+        text(
+            "SELECT vp.id AS vp_id, vp.name AS vp_name, p.name AS target_name "
+            "FROM virtual_printers vp "
+            "JOIN printers p ON vp.target_printer_id = p.id "
+            "WHERE vp.mode != 'proxy' "
+            "  AND (vp.access_code IS NULL OR vp.access_code != p.access_code)"
+        )
+    )
+    for row in mismatch_result.fetchall():
+        logger.info(
+            "VP %r (id=%d) access code synced from target printer %r",
+            row.vp_name,
+            row.vp_id,
+            row.target_name,
+        )
+    await conn.execute(
+        text(
+            "UPDATE virtual_printers "
+            "SET access_code = ("
+            "    SELECT access_code FROM printers WHERE printers.id = virtual_printers.target_printer_id"
+            ") "
+            "WHERE virtual_printers.target_printer_id IS NOT NULL "
+            "  AND virtual_printers.mode != 'proxy' "
+            "  AND (virtual_printers.access_code IS NULL OR virtual_printers.access_code != ("
+            "      SELECT access_code FROM printers WHERE printers.id = virtual_printers.target_printer_id"
+            "  ))"
+        )
+    )
+
+    # Migration: Recover queue items that got stuck in `skipped` because of
+    # the cancellation-cascade bug (#1667). Pre-fix, the scheduler's
+    # `_check_previous_success` lookback excluded `cancelled` but included
+    # `skipped`, so a single user-cancelled print poisoned every downstream
+    # item with `require_previous_success=True` indefinitely. The reporter saw
+    # 18 items blocked over 3 days from one cancellation.
+    #
+    # Conservative reversal: ONLY reset rows whose immediate predecessor on
+    # the same printer (by completed_at desc, excluding the skipped-bug
+    # cascade) was `cancelled`. Skipped items whose true predecessor was a
+    # real `failed` or `aborted` print stay skipped — those were legitimate.
+    # Genuine failure-skips share the same status + error_message + completed_at
+    # fingerprint as bug-skips, so the predecessor check is what distinguishes
+    # them. Idempotent (post-reset rows no longer match the WHERE clause).
+    #
+    # Correlated subquery is portable across SQLite and Postgres. The
+    # `error_message` literal matches the exact string the buggy scheduler
+    # wrote — narrowing further on intent.
+    stuck_skipped_result = await conn.execute(
+        text(
+            "SELECT pq.id, pq.printer_id "
+            "FROM print_queue pq "
+            "WHERE pq.status = 'skipped' "
+            "  AND pq.error_message = 'Previous print failed or was aborted' "
+            "  AND pq.completed_at IS NOT NULL "
+            "  AND ("
+            "    SELECT prev.status FROM print_queue prev "
+            "    WHERE prev.printer_id = pq.printer_id "
+            "      AND prev.id != pq.id "
+            "      AND prev.status IN ('completed', 'failed', 'cancelled', 'aborted') "
+            "      AND prev.completed_at IS NOT NULL "
+            "      AND prev.completed_at < pq.completed_at "
+            "    ORDER BY prev.completed_at DESC LIMIT 1"
+            "  ) = 'cancelled'"
+        )
+    )
+    stuck_ids = [row.id for row in stuck_skipped_result.fetchall()]
+    if stuck_ids:
+        logger.info(
+            "Queue cancellation-cascade migration (#1667): resetting %d skipped item(s) to pending",
+            len(stuck_ids),
+        )
+        await conn.execute(
+            text(
+                "UPDATE print_queue "
+                "SET status = 'pending', error_message = NULL, completed_at = NULL "
+                "WHERE id IN ("
+                "  SELECT pq.id FROM print_queue pq "
+                "  WHERE pq.status = 'skipped' "
+                "    AND pq.error_message = 'Previous print failed or was aborted' "
+                "    AND pq.completed_at IS NOT NULL "
+                "    AND ("
+                "      SELECT prev.status FROM print_queue prev "
+                "      WHERE prev.printer_id = pq.printer_id "
+                "        AND prev.id != pq.id "
+                "        AND prev.status IN ('completed', 'failed', 'cancelled', 'aborted') "
+                "        AND prev.completed_at IS NOT NULL "
+                "        AND prev.completed_at < pq.completed_at "
+                "      ORDER BY prev.completed_at DESC LIMIT 1"
+                "    ) = 'cancelled'"
+                ")"
+            )
+        )
+
+    # Migration: Unify `LibraryFile.file_type` across ingest paths (#1600).
+    # Pre-#1600, only the external-folder scan path stored `gcode.3mf` for
+    # sliced outputs — the upload, ZIP-extract, and in-process paths all
+    # stripped to the trailing `.3mf` and stored `3mf`, so the same file
+    # family was split between two values depending on how it was ingested.
+    # Going forward `classify_file_type()` is canonical; this backfill flips
+    # existing legacy `3mf` rows whose filename ends in `.gcode.3mf` to the
+    # canonical compound name. Idempotent (post-update rows no longer match
+    # `file_type = '3mf'`) and dialect-neutral (`LOWER` + `LIKE` work the
+    # same under SQLite and Postgres).
+    await conn.execute(
+        text(
+            "UPDATE library_files SET file_type = 'gcode.3mf' "
+            "WHERE file_type = '3mf' AND LOWER(filename) LIKE '%.gcode.3mf'"
+        )
+    )
 
     # Migration: Add per-user Bambu Cloud credential columns
     await _safe_execute(conn, "ALTER TABLE users ADD COLUMN cloud_token VARCHAR(500)")
@@ -1974,6 +2159,19 @@ async def run_migrations(conn):
     await _safe_execute(
         conn,
         "CREATE INDEX IF NOT EXISTS ix_print_archives_deleted_at ON print_archives (deleted_at)",
+    )
+
+    # Migration: Add bambuddy_forced_timelapse to print_archives (#1397)
+    # Tracks prints where Bambuddy forced the firmware to record a timelapse
+    # so the finish-photo extractor could pull the post-park-pre-drop frame.
+    # The cleanup path uses this to delete the timelapse both locally and on
+    # the printer's SD after extraction — the user didn't opt in to a
+    # timelapse recording. Postgres rejects `DEFAULT 0` for BOOLEAN; SQLite
+    # accepts both 0/FALSE — branch the literal.
+    _bool_false_literal = "0" if is_sqlite() else "FALSE"
+    await _safe_execute(
+        conn,
+        f"ALTER TABLE print_archives ADD COLUMN bambuddy_forced_timelapse BOOLEAN DEFAULT {_bool_false_literal}",
     )
 
     # Migration: Create smart_plug_energy_snapshots table (#941)
@@ -2185,6 +2383,40 @@ async def run_migrations(conn):
         conn,
         "ALTER TABLE api_keys ADD COLUMN can_update_energy_cost BOOLEAN DEFAULT FALSE",
     )
+
+    # GHSA-r2qv-8222-hqg3 (CVE-2026-pending, CVSS 9.9): split file-management out
+    # of the implicit "any API key" grant into an explicit scope flag. The
+    # allowlist-based ``_check_apikey_permissions`` (see ``core/auth.py``) routes
+    # LIBRARY_UPLOAD / LIBRARY_UPDATE_OWN / LIBRARY_DELETE_OWN / MAKERWORLD_IMPORT
+    # through this flag. DEFAULT TRUE matches the existing "queue + read" trust
+    # baseline; backfill mirrors can_queue so a key the user previously created as
+    # "queue-only" retains the file-upload step its queue workflow already used,
+    # while a hardened "read-only" key (can_queue=False) does not silently gain a
+    # new write capability on upgrade. Backfill is gated on column non-existence
+    # so user-edited values are never overwritten on subsequent startup.
+    column_existed = await _api_keys_column_exists(conn, "can_manage_library")
+    await _safe_execute(
+        conn,
+        "ALTER TABLE api_keys ADD COLUMN can_manage_library BOOLEAN DEFAULT TRUE",
+    )
+    if not column_existed:
+        async with conn.begin_nested():
+            await conn.execute(text("UPDATE api_keys SET can_manage_library = can_queue"))
+
+    # Same shape: SpoolBuddy NFC/scale/system endpoints plus manual inventory
+    # writes split out of the implicit "any API key" grant. Backfill mirrors
+    # ``can_queue`` so the bundled SpoolBuddy kiosk key (created via the CLI
+    # with can_queue=False) does NOT silently gain inventory writes — but
+    # the CLI override sets the new flag True explicitly, since the kiosk
+    # itself is the legitimate writer (see ``cli.py``).
+    column_existed = await _api_keys_column_exists(conn, "can_manage_inventory")
+    await _safe_execute(
+        conn,
+        "ALTER TABLE api_keys ADD COLUMN can_manage_inventory BOOLEAN DEFAULT TRUE",
+    )
+    if not column_existed:
+        async with conn.begin_nested():
+            await conn.execute(text("UPDATE api_keys SET can_manage_inventory = can_queue"))
 
     # Migration: Soft-delete column for trash bin (Issue #1008). Indexed so the
     # sweeper's "SELECT ... WHERE deleted_at < cutoff" and the trash list's
@@ -2656,6 +2888,27 @@ async def run_migrations(conn):
             conn,
             "ALTER TABLE smart_plugs ADD COLUMN IF NOT EXISTS off_delay_after_drying_minutes INTEGER DEFAULT 10",
         )
+
+    # Migration: Add per-user Orca Cloud credential columns. Mirrors the Bambu
+    # Cloud columns but adds refresh_token + expires_at (Supabase PKCE issues
+    # short-lived access tokens with rotating refresh tokens), plus three
+    # transient PKCE state columns held during the auth handshake. DATETIME
+    # is SQLite-only — Postgres uses TIMESTAMP, so the datetime columns are
+    # dialect-branched per project convention.
+    await _safe_execute(conn, "ALTER TABLE users ADD COLUMN orca_cloud_token VARCHAR(2000)")
+    await _safe_execute(conn, "ALTER TABLE users ADD COLUMN orca_cloud_refresh_token VARCHAR(128)")
+    if is_sqlite():
+        await _safe_execute(conn, "ALTER TABLE users ADD COLUMN orca_cloud_expires_at DATETIME")
+    else:
+        await _safe_execute(conn, "ALTER TABLE users ADD COLUMN IF NOT EXISTS orca_cloud_expires_at TIMESTAMP")
+    await _safe_execute(conn, "ALTER TABLE users ADD COLUMN orca_cloud_email VARCHAR(255)")
+    await _safe_execute(conn, "ALTER TABLE users ADD COLUMN orca_cloud_user_id VARCHAR(64)")
+    await _safe_execute(conn, "ALTER TABLE users ADD COLUMN orca_cloud_pending_verifier VARCHAR(64)")
+    await _safe_execute(conn, "ALTER TABLE users ADD COLUMN orca_cloud_pending_state VARCHAR(32)")
+    if is_sqlite():
+        await _safe_execute(conn, "ALTER TABLE users ADD COLUMN orca_cloud_pending_at DATETIME")
+    else:
+        await _safe_execute(conn, "ALTER TABLE users ADD COLUMN IF NOT EXISTS orca_cloud_pending_at TIMESTAMP")
 
     # Data migration: drop the embedded 3MF Title (`print_name`) from library
     # file metadata so the FileManager displays the filename, not the title (#1489).

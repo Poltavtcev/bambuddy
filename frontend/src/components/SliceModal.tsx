@@ -1,7 +1,7 @@
-import { Cloud, CloudOff, Cog, Loader2, Package, X } from 'lucide-react';
+import { Cloud, CloudOff, Cog, Loader2, Package, RefreshCw, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   api,
   type PresetRef,
@@ -38,13 +38,15 @@ interface SliceModalProps {
 
 type Slot = 'printer' | 'process' | 'filament';
 
-// SliceModal-specific tier priority: local (imported) → cloud → standard.
-// Imported profiles are surfaced first because they're the user's curated
-// picks (often colour/type-tagged), cloud is second since names alone can't
-// drive metadata-aware match, standard is the bundled fallback. This is
+// SliceModal-specific tier priority: orca_cloud → local → cloud → standard.
+// Imported (local) profiles are surfaced before Bambu Cloud because they're
+// metadata-tagged (Bambu Cloud isn't, by design — see
+// `_fetch_cloud_presets`'s rate-limit note). Orca Cloud comes first because
+// its sync_pull response inlines metadata too AND represents the user's
+// most-recently-curated source. Standard is the bundled fallback. This is
 // distinct from the listing endpoint's dedup order and only affects what
 // the SliceModal renders / pre-picks.
-const SLICE_MODAL_TIER_ORDER = ['local', 'cloud', 'standard'] as const;
+const SLICE_MODAL_TIER_ORDER = ['orca_cloud', 'local', 'cloud', 'standard'] as const;
 
 function pickDefault(by: UnifiedPresetsResponse, slot: Slot): PresetRef | null {
   for (const tier of SLICE_MODAL_TIER_ORDER) {
@@ -115,6 +117,7 @@ function pickProcessDefault(
 }
 
 const TIER_BONUS: Record<PresetSource, number> = {
+  orca_cloud: 1.75,
   local: 1.5,
   cloud: 1.0,
   standard: 0.5,
@@ -176,7 +179,7 @@ function fromRefValue(raw: string): PresetRef | null {
   if (idx < 0) return null;
   const source = raw.slice(0, idx) as PresetSource;
   const id = raw.slice(idx + 1);
-  if (source !== 'cloud' && source !== 'local' && source !== 'standard') return null;
+  if (source !== 'orca_cloud' && source !== 'cloud' && source !== 'local' && source !== 'standard') return null;
   return { source, id };
 }
 
@@ -312,6 +315,7 @@ function formatElapsed(seconds: number): string {
 export function SliceModal({ source, onClose }: SliceModalProps) {
   const { t } = useTranslation();
   const { trackJob } = useSliceJobTracker();
+  const queryClient = useQueryClient();
 
   const [printerPreset, setPrinterPreset] = useState<PresetRef | null>(null);
   const [processPreset, setProcessPreset] = useState<PresetRef | null>(null);
@@ -430,6 +434,28 @@ export function SliceModal({ source, onClose }: SliceModalProps) {
     // round-trip if the user cancels out of the plate step.
     enabled: !platesQuery.isLoading && !needsPlatePicker,
   });
+
+  // Manual refresh — bypasses the backend's 5-minute cloud cache and 1-hour
+  // bundled cache for one call so users who deleted a preset in Bambu
+  // Studio / Bambu Handy see the change immediately (#1581). The cache write
+  // inside _fetch_cloud_presets / _fetch_bundled_presets refills with the
+  // fresh result so subsequent normal callers still get cached responses.
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const handleRefreshPresets = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      const fresh = await api.getSlicerPresets({ refresh: true });
+      queryClient.setQueryData(['slicerPresets'], fresh);
+    } catch {
+      // Fall through to invalidate so React Query retries via its normal
+      // path on the next render — surfacing the failure through the existing
+      // presetsQuery.isError banner instead of duplicating error UI here.
+      queryClient.invalidateQueries({ queryKey: ['slicerPresets'] });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Imported Printer Preset Bundles (.bbscfg). Empty list when no sidecar
   // configured / no bundles imported yet; the bundle picker hides itself
@@ -723,7 +749,27 @@ export function SliceModal({ source, onClose }: SliceModalProps) {
 
           {presetsQuery.data && (
             <>
-              <CloudStatusBanner status={presetsQuery.data.cloud_status} />
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 space-y-2">
+                  <CloudStatusBanner status={presetsQuery.data.cloud_status} cloudName="bambu" />
+                  <CloudStatusBanner status={presetsQuery.data.orca_cloud_status} cloudName="orca" />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRefreshPresets}
+                  disabled={isRefreshing || isEnqueuing}
+                  className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs text-bambu-gray hover:text-white hover:bg-bambu-dark-tertiary/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  title={t('slice.refreshPresetsTitle')}
+                  aria-label={t('slice.refreshPresets')}
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  {t('slice.refreshPresets')}
+                </button>
+              </div>
+              {/* CloudStatusBanner above is hidden via flex-1 wrapper when
+                  status === 'ok' (returns null in that case), but the Refresh
+                  button stays visible regardless so users can pick up cloud /
+                  bundled changes even when sign-in is healthy. */}
               {/* Bundle picker — only renders when at least one .bbscfg has
                   been imported via Settings → Slicer Bundles. Lets the user
                   trade the cloud/local/standard tier for a single curated
@@ -945,34 +991,67 @@ export function SliceModal({ source, onClose }: SliceModalProps) {
   );
 }
 
-function CloudStatusBanner({ status }: { status: SlicerCloudStatus }) {
+function CloudStatusBanner({
+  status,
+  cloudName = 'bambu',
+}: {
+  status: SlicerCloudStatus;
+  cloudName?: 'bambu' | 'orca';
+}) {
   const { t } = useTranslation();
   if (status === 'ok') return null;
 
-  // Map each non-ok status to the appropriate icon + tone. None of these are
-  // hard errors — the user can still slice using local + standard presets,
-  // so we use info / warn styling rather than error red.
-  const config: Record<Exclude<SlicerCloudStatus, 'ok'>, { tone: string; icon: typeof Cloud; key: string; fallback: string }> = {
+  // Same status vocabulary for both Bambu and Orca Cloud — only the
+  // user-facing text varies. The fallbacks below name each cloud explicitly
+  // so the banner makes sense without translation when i18n hasn't been
+  // updated for a new locale.
+  const messages =
+    cloudName === 'orca'
+      ? {
+          not_authenticated: {
+            key: 'slice.orcaCloud.notAuthenticated',
+            fallback: 'Sign in to Orca Cloud (Profiles → Orca Cloud) to see your Orca presets.',
+          },
+          expired: {
+            key: 'slice.orcaCloud.expired',
+            fallback: 'Orca Cloud session expired — sign in again to refresh your Orca presets.',
+          },
+          unreachable: {
+            key: 'slice.orcaCloud.unreachable',
+            fallback: 'Orca Cloud is unreachable right now. Other presets still work.',
+          },
+        }
+      : {
+          not_authenticated: {
+            key: 'slice.cloud.notAuthenticated',
+            fallback: 'Sign in to Bambu Cloud (Settings → Profiles → Cloud) to see your cloud presets.',
+          },
+          expired: {
+            key: 'slice.cloud.expired',
+            fallback: 'Bambu Cloud session expired — sign in again to refresh your cloud presets.',
+          },
+          unreachable: {
+            key: 'slice.cloud.unreachable',
+            fallback: 'Bambu Cloud is unreachable right now. Local and standard presets still work.',
+          },
+        };
+
+  const tones: Record<Exclude<SlicerCloudStatus, 'ok'>, { tone: string; icon: typeof Cloud }> = {
     not_authenticated: {
       tone: 'border-bambu-dark-tertiary/40 bg-bambu-dark text-bambu-gray',
       icon: Cloud,
-      key: 'slice.cloud.notAuthenticated',
-      fallback: 'Sign in to Bambu Cloud (Settings → Profiles → Cloud) to see your cloud presets.',
     },
     expired: {
       tone: 'border-amber-700/40 bg-amber-900/20 text-amber-200',
       icon: CloudOff,
-      key: 'slice.cloud.expired',
-      fallback: 'Bambu Cloud session expired — sign in again to refresh your cloud presets.',
     },
     unreachable: {
       tone: 'border-bambu-dark-tertiary/40 bg-bambu-dark text-bambu-gray',
       icon: CloudOff,
-      key: 'slice.cloud.unreachable',
-      fallback: 'Bambu Cloud is unreachable right now. Local and standard presets still work.',
     },
   };
-  const { tone, icon: Icon, key, fallback } = config[status];
+  const { tone, icon: Icon } = tones[status];
+  const { key, fallback } = messages[status];
   return (
     <div className={`flex items-start gap-2 text-xs rounded-md border p-2 ${tone}`} role="status">
       <Icon className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -1070,8 +1149,9 @@ function PresetDropdown({
   // empty sections collapse out.
   const { sections, otherEntries } = useMemo(() => {
     const tiers: { key: keyof UnifiedPresetsResponse; label: string; fallback: string }[] = [
+      { key: 'orca_cloud', label: 'slice.tier.orcaCloud', fallback: 'Orca Cloud' },
       { key: 'local', label: 'slice.tier.local', fallback: 'Imported' },
-      { key: 'cloud', label: 'slice.tier.cloud', fallback: 'Cloud' },
+      { key: 'cloud', label: 'slice.tier.cloud', fallback: 'Bambu Cloud' },
       { key: 'standard', label: 'slice.tier.standard', fallback: 'Standard' },
     ];
     const filterByPrinter = slot !== 'printer';

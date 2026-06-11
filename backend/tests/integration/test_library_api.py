@@ -245,6 +245,52 @@ class TestLibraryFilesAPI:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
+    async def test_list_files_internal_only(self, async_client: AsyncClient, folder_factory, file_factory, db_session):
+        """#1621: `internal_only=true` restricts the listing to files in managed
+        storage (`is_external=False`) so a linked NAS with hundreds of files
+        doesn't drown the user's own uploads in the "All Files" sidebar view."""
+        internal_folder = await folder_factory(name="My uploads")
+        external_folder = await folder_factory(name="NAS", is_external=True, external_path="/mnt/nas")
+
+        internal_file = await file_factory(folder_id=internal_folder.id, filename="mine.3mf", is_external=False)
+        await file_factory(folder_id=external_folder.id, filename="nas.3mf", is_external=True)
+        root_file = await file_factory(filename="root.3mf", is_external=False)  # Root-uploaded is always internal.
+
+        response = await async_client.get("/api/v1/library/files?include_root=false&internal_only=true")
+        assert response.status_code == 200
+        ids = {f["id"] for f in response.json()}
+        assert ids == {internal_file.id, root_file.id}
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_list_files_external_only(self, async_client: AsyncClient, folder_factory, file_factory, db_session):
+        """#1621 symmetric: `external_only=true` returns the combined view
+        across every linked external folder so users with several mounts can
+        see all external content in one place without clicking each folder."""
+        internal_folder = await folder_factory(name="My uploads")
+        nas_a = await folder_factory(name="NAS A", is_external=True, external_path="/mnt/a")
+        nas_b = await folder_factory(name="NAS B", is_external=True, external_path="/mnt/b")
+
+        await file_factory(folder_id=internal_folder.id, filename="mine.3mf", is_external=False)
+        ext_a = await file_factory(folder_id=nas_a.id, filename="a.3mf", is_external=True)
+        ext_b = await file_factory(folder_id=nas_b.id, filename="b.3mf", is_external=True)
+
+        response = await async_client.get("/api/v1/library/files?include_root=false&external_only=true")
+        assert response.status_code == 200
+        ids = {f["id"] for f in response.json()}
+        assert ids == {ext_a.id, ext_b.id}
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_list_files_internal_and_external_mutually_exclusive(self, async_client: AsyncClient, db_session):
+        """Both flags together is a caller bug — fail loud (400) rather than
+        silently picking one, so a frontend regression is caught immediately."""
+        response = await async_client.get("/api/v1/library/files?internal_only=true&external_only=true")
+        assert response.status_code == 400
+        assert "mutually exclusive" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
     async def test_get_file(self, async_client: AsyncClient, file_factory, db_session):
         """Verify single file can be retrieved."""
         lib_file = await file_factory(filename="test.3mf")
@@ -285,22 +331,24 @@ class TestLibraryFilesAPI:
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_rename_file_invalid_path_separator(self, async_client: AsyncClient, file_factory, db_session):
-        """Verify file rename fails with path separators."""
+        """Verify file rename fails with a forward slash (FAT32-illegal, #1540)."""
         lib_file = await file_factory(filename="test.3mf")
         data = {"filename": "path/to/file.3mf"}
         response = await async_client.put(f"/api/v1/library/files/{lib_file.id}", json=data)
         assert response.status_code == 400
-        assert "path separator" in response.json()["detail"].lower()
+        assert "invalid character" in response.json()["detail"].lower()
+        assert "/" in response.json()["detail"]
 
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_rename_file_invalid_backslash(self, async_client: AsyncClient, file_factory, db_session):
-        """Verify file rename fails with backslash."""
+        """Verify file rename fails with a backslash (FAT32-illegal, #1540)."""
         lib_file = await file_factory(filename="test.3mf")
         data = {"filename": "path\\to\\file.3mf"}
         response = await async_client.put(f"/api/v1/library/files/{lib_file.id}", json=data)
         assert response.status_code == 400
-        assert "path separator" in response.json()["detail"].lower()
+        assert "invalid character" in response.json()["detail"].lower()
+        assert "\\" in response.json()["detail"]
 
     @pytest.mark.asyncio
     @pytest.mark.integration
@@ -1176,6 +1224,55 @@ class TestPrintFileUploadValidation:
         assert response.status_code == 200
         result = response.json()
         assert result["filename"] == "plate_1.gcode.3mf"
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_library_upload_classifies_gcode_3mf_as_compound(self, async_client: AsyncClient, db_session):
+        """#1600 follow-up: upload path used to strip to the trailing
+        extension and store ``file_type='3mf'`` for sliced outputs, while
+        the external-folder scan stored ``file_type='gcode.3mf'``. Now
+        every ingest path goes through ``classify_file_type`` and
+        produces the canonical compound name."""
+        files = {
+            "file": (
+                "sliced.gcode.3mf",
+                self._valid_3mf_bytes(),
+                "application/zip",
+            )
+        }
+        response = await async_client.post("/api/v1/library/files", files=files)
+        assert response.status_code == 200
+        assert response.json()["file_type"] == "gcode.3mf"
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_library_get_gcode_endpoint_accepts_compound_file_type(self, async_client: AsyncClient, db_session):
+        """#1600 follow-up: pre-fix, ``GET /files/{id}/gcode`` only handled
+        ``file_type`` of ``gcode`` or ``3mf`` and 400'd on a row whose
+        ``file_type`` was ``gcode.3mf`` — exactly the rows the external-
+        folder scan was creating. The gate now treats both as 3MF and
+        unzips the embedded gcode the same way."""
+        from backend.app.models.library import LibraryFile
+
+        # Persist a real `.gcode.3mf` zip under file_type='gcode.3mf' so
+        # the endpoint hits the new branch.
+        with tempfile.NamedTemporaryFile(suffix=".gcode.3mf", delete=False) as tmp:
+            tmp.write(self._valid_3mf_bytes(name="Metadata/plate_1.gcode"))
+            tmp_path = tmp.name
+
+        lib_file = LibraryFile(
+            filename="sliced.gcode.3mf",
+            file_path=tmp_path,
+            file_type="gcode.3mf",
+            file_size=Path(tmp_path).stat().st_size,
+        )
+        db_session.add(lib_file)
+        await db_session.commit()
+        await db_session.refresh(lib_file)
+
+        response = await async_client.get(f"/api/v1/library/files/{lib_file.id}/gcode")
+        assert response.status_code == 200
+        assert b"G28" in response.content
 
     @pytest.mark.asyncio
     @pytest.mark.integration
