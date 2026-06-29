@@ -2643,14 +2643,14 @@ function SpoolTableRow({
       ))}
       <td className="py-3 px-4">
         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+          <button onClick={onEdit} className="p-1.5 text-bambu-gray hover:text-white rounded transition-colors" title={t('common.edit')}>
+            <Edit2 className="w-4 h-4" />
+          </button>
           {onMove && (
             <button onClick={onMove} className="p-1.5 text-bambu-gray hover:text-blue-400 rounded transition-colors" title={t('locations.move')}>
               <MapPin className="w-4 h-4" />
             </button>
           )}
-          <button onClick={onEdit} className="p-1.5 text-bambu-gray hover:text-white rounded transition-colors" title={t('common.edit')}>
-            <Edit2 className="w-4 h-4" />
-          </button>
           {onCopy && (
             <button onClick={onCopy} className="p-1.5 text-bambu-gray hover:text-bambu-green rounded transition-colors" title={t('inventory.copySpool')}>
               <Copy className="w-4 h-4" />
