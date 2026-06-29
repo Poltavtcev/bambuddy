@@ -45,7 +45,8 @@ export function MoveSpoolModal({ open, spool, spoolmanMode = false, onClose, onM
     },
     onSuccess: () => {
       showToast(t('locations.moveSuccess'), 'success');
-      invalidateSpoolAndLocationQueries(queryClient);
+      const spoolsQueryKey = spoolmanMode ? ['spoolman-inventory-spools'] : ['inventory-spools'];
+      invalidateSpoolAndLocationQueries(queryClient, spoolsQueryKey);
       onMoved?.();
       onClose();
     },
