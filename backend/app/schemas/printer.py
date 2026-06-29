@@ -1,17 +1,34 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class PrinterBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     serial_number: str = Field(..., min_length=1, max_length=50)
+
+    @field_validator("serial_number")
+    @classmethod
+    def _normalize_serial_number(cls, v: str) -> str:
+        """Uppercase and trim the serial number.
+
+        Bambu serial numbers are uppercase alphanumeric, and the MQTT report
+        topic ``device/<serial>/report`` is case-sensitive. A serial entered
+        in the wrong case (or with stray whitespace) connects and subscribes
+        without error but never receives a message — the printer publishes to
+        the correctly-cased topic, so every status field stays unknown (#1465).
+        Normalising on input makes the subscribed topic always match.
+        """
+        normalized = v.strip().upper()
+        if not normalized:
+            raise ValueError("serial_number must not be blank")
+        return normalized
+
     ip_address: str = Field(
         ...,
         max_length=253,
         pattern=r"^(\d{1,3}(\.\d{1,3}){3}|[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*)$",
     )
-    access_code: str = Field(..., min_length=1, max_length=20)
     model: str | None = None
     location: str | None = None  # Group/location name
     auto_archive: bool = True
@@ -23,7 +40,10 @@ class PrinterBase(BaseModel):
 
 
 class PrinterCreate(PrinterBase):
-    pass
+    # access_code lives on the input shapes only — never on the default
+    # PrinterResponse. Direct exposure on PRINTERS_READ would let a Viewer
+    # connect to the printer's MQTT and bypass Bambuddy's RBAC.
+    access_code: str = Field(..., min_length=1, max_length=20)
 
 
 class PlateDetectionROI(BaseModel):
@@ -83,7 +103,6 @@ class PrinterResponse(PrinterBase):
             "name": printer.name,
             "serial_number": printer.serial_number,
             "ip_address": printer.ip_address,
-            "access_code": printer.access_code,
             "model": printer.model,
             "location": printer.location,
             "auto_archive": printer.auto_archive,
@@ -117,11 +136,32 @@ class PrinterResponse(PrinterBase):
         return cls(**data)
 
 
+class PrinterResponseWithSecret(PrinterResponse):
+    """PrinterResponse + access_code. Returned ONLY to callers with
+    PRINTERS_UPDATE (Admin / Operator JWTs, or single-trust auth-disabled mode).
+
+    Viewers and API keys never receive this shape — they get the bare
+    PrinterResponse without access_code, since holding the access_code lets
+    the caller talk to the printer's MQTT directly and bypass Bambuddy's RBAC.
+    """
+
+    access_code: str
+
+
 class HMSErrorResponse(BaseModel):
     code: str
     attr: int = 0  # Attribute value for constructing wiki URL
     module: int
     severity: int  # 1=fatal, 2=serious, 3=common, 4=info
+    actions: list[str] = []  # List of user-facing action keys (e.g. "CHECK_FILAMENT")
+    job_id: str | None = None  # Optional job ID for actions that require it (e.g. "CHECK_ASSISTANT")
+    # Canonical hex identifier the firmware uses to match HMS-related commands.
+    # 16 chars for `hms[]`-array faults (full 64-bit attr+code), 8 chars for
+    # `print_error` faults. The frontend echoes this back as
+    # HmsActionBody.print_error so we send the firmware-recognised key, not the
+    # truncated short_code that historically caused silent command rejection
+    # (#1830, H2D wrong-plate verification).
+    full_code: str = ""
 
 
 class AMSTray(BaseModel):
@@ -155,6 +195,8 @@ class AMSUnit(BaseModel):
     dry_status: int = 0  # 0=Off, 1=Checking, 2=Drying, 3=Cooling, 4=Stopping, 5=Error
     dry_sub_status: int = 0  # 0=Off, 1=Heating, 2=Dehumidify
     dry_sf_reason: list[int] = []  # Cannot-dry reasons from firmware (see CannotDryReason)
+    dry_target_temp: int | None = None  # Active-cycle target °C (Bambu doesn't echo this)
+    dry_filament: str | None = None  # Active-cycle filament name we sent
     module_type: str = ""  # "ams", "n3f", "n3s"
 
 
@@ -181,6 +223,20 @@ class NozzleRackSlot(BaseModel):
 class AmsLabelBody(BaseModel):
     label: str = Field(..., min_length=1, max_length=100)
     ams_serial: str = Field(default="", max_length=50)
+
+
+class HmsActionBody(BaseModel):
+    # Canonical hex identifier (HMSErrorResponse.full_code): 8 chars for
+    # `print_error`-sourced faults, 16 chars for `hms[]`-array faults whose
+    # full 64-bit code is the firmware's matching key. Length-bounded to
+    # those two valid shapes to keep stray input from reaching the dispatcher.
+    print_error: str = Field(..., min_length=8, max_length=16, pattern=r"^[0-9A-Fa-f]{8}([0-9A-Fa-f]{8})?$")
+    # One of the HMSAction enum values. Length-capped to keep stray input from
+    # reaching the dispatcher's `match` statement.
+    action: str = Field(..., min_length=1, max_length=64)
+    # The `subtask_id` snapshot from the HMSError that surfaced this dialog.
+    # Bambu echoes it back in HMS-aware commands. Optional for idle errors.
+    job_id: str | None = Field(default=None, max_length=64)
 
 
 class FilaSwitchResponse(BaseModel):
@@ -293,11 +349,20 @@ class PrinterStatus(BaseModel):
     firmware_version: str | None = None
     # Developer LAN mode: True = enabled, False = disabled (MQTT encryption), None = unknown
     developer_mode: bool | None = None
+    # AMS Filament Backup ("auto-switch" to a second spool when one runs out).
+    # True = ON, False = OFF, None = unknown / unsupported (A1 family — protocol field
+    # not yet identified). UI treats None as "status unavailable", not as a hard disable.
+    ams_filament_backup: bool | None = None
     # Queue: printer is awaiting the user to acknowledge the build plate is cleared
     # after a finished/failed print. Persisted across restarts (#961).
     awaiting_plate_clear: bool = False
     # AMS drying support
     supports_drying: bool = False
+    # AMS "Print While Drying" — drying mid-print. Verified per Bambu wiki release notes;
+    # see _DRY_WHILE_PRINTING_MIN_FIRMWARE in printer_manager.py for the matrix.
+    supports_drying_while_printing: bool = False
+    # Active chamber heater (responds to M141). True only for H2C/H2D/H2DPro/H2S/X2D.
+    supports_chamber_heater: bool = False
     # Linked archive for the active print (resolved via subtask_id). Frontend uses
     # this to fetch plate metadata and show the plate name when the source 3MF is
     # multi-plate (#881 follow-up).
@@ -306,3 +371,39 @@ class PrinterStatus(BaseModel):
     # Set for every active print regardless of plate count; the frontend decides
     # whether to render it based on current_archive_id's is_multi_plate flag.
     current_plate_id: int | None = None
+
+
+class DiagnosticCheck(BaseModel):
+    """One connection-diagnostic check result.
+
+    ``id`` is a stable key (port_mqtt, port_ftps, port_rtsps, network_mode,
+    subnet, mqtt_auth, developer_mode); the frontend renders the localized
+    title and fix text from id + status. ``params`` carries interpolation
+    values (e.g. network mode, IP addresses) for that text.
+    """
+
+    id: str
+    status: str  # "pass" | "fail" | "warn" | "skip"
+    params: dict = Field(default_factory=dict)
+
+
+class PrinterDiagnosticResult(BaseModel):
+    """Result of a printer connection diagnostic run."""
+
+    printer_id: int | None = None
+    ip_address: str
+    overall: str  # "ok" | "warnings" | "problems"
+    checks: list[DiagnosticCheck]
+
+
+class DiagnosticRequest(BaseModel):
+    """Pre-save (Add Printer) connection diagnostic request.
+
+    serial_number + access_code are optional: when both are present the
+    diagnostic also probes MQTT credentials, otherwise only the
+    network-level checks run.
+    """
+
+    ip_address: str
+    serial_number: str | None = None
+    access_code: str | None = None

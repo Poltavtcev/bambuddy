@@ -17,6 +17,7 @@ from backend.app.services.printer_manager import (
     printer_state_to_dict,
     supports_chamber_temp,
     supports_drying,
+    supports_drying_while_printing,
 )
 
 
@@ -377,6 +378,8 @@ class TestPrinterManager:
             vibration_cali=True,
             layer_inspect=False,
             use_ams=True,
+            nozzle_offset_cali=False,
+            nozzle_mapping=None,
         )
         assert result is True
 
@@ -584,11 +587,125 @@ class TestPrinterManager:
             mock_instance.state.connected = False
             MockClient.return_value = mock_instance
 
-            result = await manager.test_connection("192.168.1.100", "00M09A123456789", "12345678")
+            # Shorten the probe budget so the test doesn't burn the full
+            # 8-second production timeout while polling a failing connection.
+            with (
+                patch.object(manager, "PROBE_TIMEOUT_SECONDS", 0.4),
+                patch.object(manager, "PROBE_POLL_INTERVAL_SECONDS", 0.1),
+            ):
+                result = await manager.test_connection("192.168.1.100", "00M09A123456789", "12345678")
 
             assert result["success"] is False
             assert result["state"] is None
             mock_instance.disconnect.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_test_connection_polls_and_returns_early_on_connect(self, manager):
+        """#1445: a slow printer that finishes its handshake mid-probe must
+        not be reported as a failure. Previously a fixed 2s sleep meant P1S
+        TLS / CONNACK that took 3-5s got falsely rejected; now we poll and
+        early-return as soon as connected flips True.
+        """
+        import asyncio
+        import time
+
+        with patch("backend.app.services.printer_manager.BambuMQTTClient") as MockClient:
+            mock_instance = MagicMock()
+            mock_instance.state = MagicMock()
+            mock_instance.state.connected = False  # not connected at probe start
+            mock_instance.state.state = "IDLE"
+            mock_instance.state.raw_data = {"device_model": "P1S"}
+            MockClient.return_value = mock_instance
+
+            async def flip_connected_after(delay: float):
+                await asyncio.sleep(delay)
+                mock_instance.state.connected = True
+
+            # Simulates the P1S broker finishing its slow handshake ~0.5s in,
+            # well past the old 2s-or-fail boundary's natural variance.
+            with (
+                patch.object(manager, "PROBE_TIMEOUT_SECONDS", 3.0),
+                patch.object(manager, "PROBE_POLL_INTERVAL_SECONDS", 0.05),
+            ):
+                start = time.monotonic()
+                flip_task = asyncio.create_task(flip_connected_after(0.5))
+                try:
+                    result = await manager.test_connection("192.168.1.100", "00M09A123456789", "12345678")
+                finally:
+                    await flip_task
+                elapsed = time.monotonic() - start
+
+            assert result["success"] is True
+            assert result["state"] == "IDLE"
+            # Early-return guarantee: must come back well before the configured
+            # timeout once connected flips. ~0.5s + one poll interval is plenty.
+            assert elapsed < 1.5, f"probe should have early-returned shortly after 0.5s, took {elapsed:.2f}s"
+
+    @pytest.mark.asyncio
+    async def test_test_connection_disconnect_runs_off_loop(self, manager):
+        """#1445: the root cause of the "Docker container hangs" symptom was
+        `client.disconnect()` running on the asyncio thread — paho's
+        `loop_stop()` does a thread-join that blocks until its network
+        thread exits, which on a slow P1S TLS handshake could take many
+        seconds. This test pins the off-loop teardown so a regression that
+        reintroduces sync disconnect breaks CI immediately.
+        """
+        import asyncio
+        import threading
+        import time
+
+        with patch("backend.app.services.printer_manager.BambuMQTTClient") as MockClient:
+            asyncio_thread_id = threading.get_ident()
+            disconnect_thread_ids: list[int] = []
+            disconnect_blocked_for: list[float] = []
+
+            def slow_blocking_disconnect():
+                # Mirrors paho.Client.loop_stop()'s thread-join semantics —
+                # if this runs on the asyncio thread the event loop stalls.
+                disconnect_thread_ids.append(threading.get_ident())
+                start = time.monotonic()
+                time.sleep(0.4)
+                disconnect_blocked_for.append(time.monotonic() - start)
+
+            mock_instance = MagicMock()
+            mock_instance.state = MagicMock()
+            mock_instance.state.connected = True
+            mock_instance.state.state = "IDLE"
+            mock_instance.state.raw_data = {"device_model": "P1S"}
+            mock_instance.disconnect = slow_blocking_disconnect
+            MockClient.return_value = mock_instance
+
+            # Another coroutine must keep making progress while disconnect()
+            # runs — proves the event loop was not blocked.
+            event_loop_alive_ticks = 0
+
+            async def heartbeat():
+                nonlocal event_loop_alive_ticks
+                while True:
+                    await asyncio.sleep(0.05)
+                    event_loop_alive_ticks += 1
+
+            heartbeat_task = asyncio.create_task(heartbeat())
+            try:
+                await manager.test_connection("192.168.1.100", "00M09A123456789", "12345678")
+            finally:
+                heartbeat_task.cancel()
+                try:
+                    await heartbeat_task
+                except asyncio.CancelledError:
+                    pass
+
+            # disconnect ran on a different thread than asyncio's
+            assert disconnect_thread_ids, "disconnect was never called"
+            assert disconnect_thread_ids[0] != asyncio_thread_id, (
+                "disconnect ran on the asyncio thread — this blocks the event loop (#1445)"
+            )
+            # Heartbeat made progress while the 0.4s disconnect was blocking
+            # the worker thread (proves the loop wasn't stalled).
+            assert event_loop_alive_ticks >= 3, (
+                f"event loop appears to have stalled during disconnect "
+                f"(only {event_loop_alive_ticks} heartbeats; expected >=3)"
+            )
 
     # ========================================================================
     # Tests for current print user tracking (Issue #206)
@@ -1128,6 +1245,94 @@ class TestStatusKeyDryingDedup:
         assert result1["ams"] != result2["ams"]
 
 
+class TestDryingTargetExposure:
+    """Tests for dry_target_temp / dry_filament surfacing on AMS state dict.
+
+    Bambu does not echo the active cycle's chosen filament + target
+    temperature on the per-tick AMS push, only the dry_time countdown.
+    The badge needs the cached target so it can render "PETG @ 65°C".
+    """
+
+    def _state_with_ams(self, ams_data: dict) -> object:
+        state = MagicMock()
+        state.connected = True
+        state.state = "IDLE"
+        state.current_print = None
+        state.subtask_name = None
+        state.gcode_file = None
+        state.progress = 0
+        state.remaining_time = 0
+        state.layer_num = 0
+        state.total_layers = 0
+        state.temperatures = {"nozzle": 25, "bed": 25}
+        state.hms_errors = []
+        state.ams_status_main = 0
+        state.ams_status_sub = 0
+        state.tray_now = None
+        state.wifi_signal = -50
+        state.stg_cur = -1
+        state.raw_data = {"ams": [ams_data]}
+        return state
+
+    def test_cached_target_wins_over_tray_fallback(self):
+        """When the cache has a target for this AMS, use it verbatim — even
+        if the loaded tray's filament/recommended-drying-temp differ."""
+        state = self._state_with_ams(
+            {
+                "id": 0,
+                "dry_time": 600,
+                "tray": [
+                    {"id": 0, "tray_type": "PLA", "drying_temp": 50, "state": 11},
+                ],
+            }
+        )
+        result = printer_state_to_dict(state, drying_targets={0: {"filament": "PETG", "temp": 65}})
+        assert result["ams"][0]["dry_filament"] == "PETG"
+        assert result["ams"][0]["dry_target_temp"] == 65
+
+    def test_falls_back_to_loaded_tray_when_no_cache(self):
+        """No cached target → derive from first loaded tray's tray_type +
+        RFID-recommended drying_temp (popover seed heuristic)."""
+        state = self._state_with_ams(
+            {
+                "id": 0,
+                "dry_time": 600,
+                "tray": [
+                    {"id": 0, "tray_type": "ABS", "drying_temp": 70, "state": 11},
+                ],
+            }
+        )
+        result = printer_state_to_dict(state, drying_targets=None)
+        assert result["ams"][0]["dry_filament"] == "ABS"
+        assert result["ams"][0]["dry_target_temp"] == 70
+
+    def test_returns_none_when_no_cache_and_empty_trays(self):
+        """No cache + no loaded tray with tray_type → both fields are None."""
+        state = self._state_with_ams(
+            {
+                "id": 0,
+                "dry_time": 600,
+                "tray": [{"id": 0}],
+            }
+        )
+        result = printer_state_to_dict(state, drying_targets={})
+        assert result["ams"][0]["dry_filament"] is None
+        assert result["ams"][0]["dry_target_temp"] is None
+
+    def test_targets_for_other_ams_id_dont_leak(self):
+        """A cached target for AMS 1 must not surface on AMS 0."""
+        state = self._state_with_ams(
+            {
+                "id": 0,
+                "dry_time": 600,
+                "tray": [{"id": 0}],
+            }
+        )
+        result = printer_state_to_dict(state, drying_targets={1: {"filament": "PETG", "temp": 65}})
+        assert result["ams"][0]["dry_filament"] is None
+        assert result["ams"][0]["dry_target_temp"] is None
+
+
 class TestSupportsChamberTemp:
     """Tests for supports_chamber_temp helper function."""
 
@@ -1248,6 +1453,9 @@ class TestSupportsDrying:
         assert supports_drying("P1S", "01.08.00.00") is True
         assert supports_drying("H2D", "01.02.30.00") is True
         assert supports_drying("H2S", "01.02.00.00") is True
+        assert supports_drying("H2C", "01.02.00.00") is True
+        assert supports_drying("O1C", "01.02.00.00") is True
+        assert supports_drying("O1C2", "01.02.00.00") is True
         assert supports_drying("P2S", "01.02.00.00") is True
         assert supports_drying("N7", "01.02.00.00") is True
 
@@ -1256,6 +1464,9 @@ class TestSupportsDrying:
         assert supports_drying("X1C", "01.08.00.00") is False
         assert supports_drying("P1S", "01.07.00.00") is False
         assert supports_drying("H2S", "01.01.00.00") is False
+        assert supports_drying("H2C", "01.01.99.99") is False
+        assert supports_drying("O1C", "01.01.99.99") is False
+        assert supports_drying("O1C2", "01.01.99.99") is False
         assert supports_drying("P2S", "01.01.99.99") is False
         assert supports_drying("N7", "01.01.99.99") is False
 
@@ -1266,7 +1477,7 @@ class TestSupportsDrying:
 
     def test_unsupported_models(self):
         """Verify models without AMS drying support return False regardless of firmware."""
-        for model in ["A1", "A1MINI", "A1-MINI", "H2C", "N1", "N2S"]:
+        for model in ["A1", "A1MINI", "A1-MINI", "N1", "N2S"]:
             assert supports_drying(model, "99.99.99.99") is False, f"Expected False for {model}"
 
     def test_unknown_models_allowed(self):
@@ -1292,6 +1503,91 @@ class TestSupportsDrying:
         assert supports_drying("x1c", "01.09.00.00") is True
         assert supports_drying("p2s", "01.02.00.00") is True
         assert supports_drying("a1", "99.99.99.99") is False
+
+
+class TestSupportsDryingWhilePrinting:
+    """Tests for the supports_drying_while_printing gate (concurrent drying during print).
+
+    Stricter than supports_drying — only models explicitly confirmed by Bambu wiki
+    release notes are allowed (verified phrase: "printing while filament is drying"
+    / "Print While Drying").
+    """
+
+    def test_known_supported_with_firmware(self):
+        """Matrix-confirmed models with min firmware return True."""
+        assert supports_drying_while_printing("H2D", "01.03.00.00") is True
+        assert supports_drying_while_printing("H2D Pro", "01.02.00.00") is True
+        assert supports_drying_while_printing("O1E", "01.02.00.00") is True
+        assert supports_drying_while_printing("O2D", "01.02.00.00") is True
+        assert supports_drying_while_printing("H2C", "01.02.00.00") is True
+        assert supports_drying_while_printing("O1C", "01.02.00.00") is True
+        assert supports_drying_while_printing("O1C2", "01.02.00.00") is True
+        assert supports_drying_while_printing("H2S", "01.02.00.00") is True
+        assert supports_drying_while_printing("X2D", "01.01.00.00") is True
+        assert supports_drying_while_printing("N6", "01.01.00.00") is True
+        assert supports_drying_while_printing("X1C", "01.11.02.00") is True
+        assert supports_drying_while_printing("BL-P001", "01.11.02.00") is True
+        assert supports_drying_while_printing("P2S", "01.02.00.00") is True
+        assert supports_drying_while_printing("N7", "01.02.00.00") is True
+        assert supports_drying_while_printing("A2L", "01.01.00.00") is True
+        assert supports_drying_while_printing("N9", "01.01.00.00") is True
+
+    def test_known_supported_below_min_firmware(self):
+        """Matrix-confirmed models on too-old firmware return False."""
+        assert supports_drying_while_printing("H2D", "01.02.30.00") is False
+        assert supports_drying_while_printing("X1C", "01.11.01.00") is False
+        assert supports_drying_while_printing("P2S", "01.01.99.99") is False
+        assert supports_drying_while_printing("H2S", "01.01.99.99") is False
+        assert supports_drying_while_printing("A2L", "01.00.99.99") is False
+
+    def test_not_in_matrix_excluded(self):
+        """Models absent from the matrix return False regardless of firmware.
+
+        P1*, A1, A1 Mini, X1 (non-C), X1E are intentionally excluded — their wiki
+        release notes never mention "Print While Drying" / "printing while filament
+        is drying".
+        """
+        for model in [
+            "P1P",
+            "P1S",
+            "C11",
+            "C12",
+            "A1",
+            "A1 MINI",
+            "A1MINI",
+            "N1",
+            "N2S",
+            "X1",
+            "X1E",
+            "BL-P002",
+            "C13",
+        ]:
+            assert supports_drying_while_printing(model, "99.99.99.99") is False, f"Expected False for {model}"
+
+    def test_no_firmware_returns_false(self):
+        """Missing firmware version returns False even for supported models."""
+        assert supports_drying_while_printing("H2D", None) is False
+        assert supports_drying_while_printing("P2S", None) is False
+
+    def test_none_model_returns_false(self):
+        """None model returns False."""
+        assert supports_drying_while_printing(None, "01.03.00.00") is False
+
+    def test_case_insensitive(self):
+        """Model matching is case-insensitive."""
+        assert supports_drying_while_printing("h2d", "01.03.00.00") is True
+        assert supports_drying_while_printing("p2s", "01.02.00.00") is True
+        assert supports_drying_while_printing("a1", "99.99.99.99") is False
+
+    def test_unknown_model_returns_false(self):
+        """Unknown models default to FALSE (strict gate — not the lenient default-allow).
+
+        This contrasts with supports_drying which defaults to True for unknown
+        models. For while-printing the cost of being wrong is real (firmware
+        rejection mid-print is annoying; melted spool is worse), so we err
+        toward conservative.
+        """
+        assert supports_drying_while_printing("FUTURE_MODEL", "99.99.99.99") is False
 
 
 class TestGetDerivedStatusName:

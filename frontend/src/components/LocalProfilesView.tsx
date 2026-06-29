@@ -15,7 +15,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { api } from '../api/client';
-import type { LocalPreset } from '../api/client';
+import type { LocalPreset, LocalPresetsResponse } from '../api/client';
 import { Card, CardContent } from './Card';
 import { Button } from './Button';
 import { useToast } from '../contexts/ToastContext';
@@ -245,6 +245,11 @@ export function LocalProfilesView() {
     },
     onSuccess: (results) => {
       queryClient.invalidateQueries({ queryKey: ['localPresets'] });
+      // The SliceModal reads from a separate `slicerPresets` query that lists
+      // cloud + local + standard in one shot. Without this second invalidation
+      // freshly-imported profiles wouldn't appear in the SliceModal dropdown
+      // until that query's staleTime elapsed plus a refocus / remount (#1581).
+      queryClient.invalidateQueries({ queryKey: ['slicerPresets'] });
       let totalImported = 0;
       let totalSkipped = 0;
       let totalErrors = 0;
@@ -271,8 +276,27 @@ export function LocalProfilesView() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.deleteLocalPreset(id),
-    onSuccess: () => {
+    onSuccess: (_, id) => {
+      // Optimistically drop the row from the cached list so the rendered table
+      // updates the instant the DELETE returns. Without this the row stays
+      // visible until invalidateQueries' background refetch completes, and a
+      // quick re-click on the same row opens a second delete-confirm modal
+      // that resolves to a 404 (server already deleted it). The cache holds a
+      // grouped response (filament / printer / process), not a flat list.
+      queryClient.setQueryData<LocalPresetsResponse>(['localPresets'], (old) => {
+        if (!old) return old;
+        return {
+          filament: old.filament.filter((p) => p.id !== id),
+          printer: old.printer.filter((p) => p.id !== id),
+          process: old.process.filter((p) => p.id !== id),
+        };
+      });
       queryClient.invalidateQueries({ queryKey: ['localPresets'] });
+      // Match the import path: the SliceModal's `slicerPresets` query needs
+      // to be invalidated too, otherwise the deleted preset keeps appearing
+      // in the slice dropdown until its 60s staleTime expires plus a
+      // refocus / remount (#1581).
+      queryClient.invalidateQueries({ queryKey: ['slicerPresets'] });
       setDeleteConfirm(null);
       showToast(t('profiles.localProfiles.toast.deleted'));
     },
@@ -303,6 +327,15 @@ export function LocalProfilesView() {
   const printers = useMemo(() => filterPresets(presets?.printer || []), [presets?.printer, filterPresets]);
   const processes = useMemo(() => filterPresets(presets?.process || []), [presets?.process, filterPresets]);
   const totalCount = filaments.length + printers.length + processes.length;
+  // Count of imported presets BEFORE the search filter — drives whether the
+  // search bar shows at all. Gating the search bar on totalCount (post-filter)
+  // made it vanish the moment a query matched nothing, leaving the user unable
+  // to clear or edit their search without a page refresh (#1470).
+  const hasAnyPresets =
+    (presets?.filament?.length ?? 0) +
+      (presets?.printer?.length ?? 0) +
+      (presets?.process?.length ?? 0) >
+    0;
 
   if (isLoading) {
     return (
@@ -349,7 +382,7 @@ export function LocalProfilesView() {
       )}
 
       {/* Search Bar */}
-      {totalCount > 0 && (
+      {hasAnyPresets && (
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-bambu-gray" />
           <input
@@ -362,12 +395,20 @@ export function LocalProfilesView() {
         </div>
       )}
 
-      {/* No Presets */}
-      {totalCount === 0 && !isLoading && (
+      {/* No presets imported at all */}
+      {!hasAnyPresets && !isLoading && (
         <div className="text-center py-12">
           <HardDrive className="w-12 h-12 text-bambu-gray mx-auto mb-3 opacity-50" />
           <p className="text-bambu-gray">{t('profiles.localProfiles.noPresets')}</p>
           <p className="text-xs text-bambu-gray/60 mt-1">{t('profiles.localProfiles.importDesc')}</p>
+        </div>
+      )}
+
+      {/* Presets exist, but the search query matched none of them */}
+      {hasAnyPresets && totalCount === 0 && !isLoading && (
+        <div className="text-center py-12">
+          <Search className="w-12 h-12 text-bambu-gray mx-auto mb-3 opacity-50" />
+          <p className="text-bambu-gray">{t('profiles.localProfiles.noSearchResults')}</p>
         </div>
       )}
 

@@ -29,11 +29,13 @@ from backend.app.services.camera import (
     get_ffmpeg_path,
     is_chamber_image_model,
     read_next_chamber_frame,
+    rtsp_socket_timeout_flag,
     test_camera_connection,
 )
 from backend.app.services.camera_fanout import (
     MjpegBroadcaster,
     get_or_create_broadcaster,
+    get_subscriber_count,
     iter_subscriber,
     shutdown_broadcaster,
 )
@@ -276,20 +278,35 @@ def _summarize_ffmpeg_stderr(text: str | None) -> str:
 
 
 async def _read_ffmpeg_stderr(process: asyncio.subprocess.Process) -> str | None:
-    """Read ffmpeg stderr for diagnostics (best-effort, non-blocking).
+    """Read whatever ffmpeg has written to stderr so far (best-effort).
 
-    Returns the stderr content with ffmpeg's boilerplate banner stripped,
-    so log output stays focused on the actual error.
+    ffmpeg's stderr must be drained *incrementally*. A stalled-but-still-alive
+    ffmpeg — the typical P2S RTSP failure, where it connects but never produces
+    a frame — never closes stderr, so a plain ``stderr.read()`` (read-to-EOF)
+    blocks until the wait_for timeout and returns nothing, discarding the
+    banner + stream-analysis lines ffmpeg already printed. Reading in bounded
+    chunks returns the buffered output promptly whether or not ffmpeg has
+    exited. Returns the content with ffmpeg's boilerplate banner stripped.
     """
     if not process or not process.stderr:
         return None
+    chunks: list[bytes] = []
+    total = 0
+    cap = 65536
     try:
-        data = await asyncio.wait_for(process.stderr.read(), timeout=2.0)
-        if not data:
-            return None
-        return _summarize_ffmpeg_stderr(data.decode(errors="replace")) or None
-    except (TimeoutError, Exception):
+        while total < cap:
+            chunk = await asyncio.wait_for(process.stderr.read(8192), timeout=2.0)
+            if not chunk:
+                break  # EOF — ffmpeg has exited
+            chunks.append(chunk)
+            total += len(chunk)
+    except Exception:
+        # Timed out waiting for more data — ffmpeg is alive but quiet now.
+        # Fall through and return whatever it already printed.
+        pass
+    if not chunks:
         return None
+    return _summarize_ffmpeg_stderr(b"".join(chunks).decode(errors="replace")) or None
 
 
 async def generate_rtsp_mjpeg_stream(
@@ -333,8 +350,11 @@ async def generate_rtsp_mjpeg_stream(
         "tcp",
         "-rtsp_flags",
         "prefer_tcp",
-        "-timeout",
-        "30000000",  # 30 seconds in microseconds
+        # Socket I/O timeout name varies by ffmpeg version (#1504); see
+        # rtsp_socket_timeout_flag(). The 30s value is microseconds for
+        # both names.
+        f"-{rtsp_socket_timeout_flag()}",
+        "30000000",
         "-buffer_size",
         "1024000",  # 1MB buffer
         "-max_delay",
@@ -365,9 +385,19 @@ async def generate_rtsp_mjpeg_stream(
         _disconnect_events[stream_id] = disconnect_event
 
     logger.info(
-        "Starting RTSP camera stream for %s (stream_id=%s, model=%s, fps=%s)", ip_address, stream_id, model, fps
+        "Starting RTSP camera stream for %s (stream_id=%s, model=%s, fps=%s, probesize=%s, analyzeduration=%s)",
+        ip_address,
+        stream_id,
+        model,
+        fps,
+        profile.probesize,
+        profile.analyzeduration,
     )
-    logger.debug("ffmpeg command: %s ... (url hidden)", ffmpeg)
+    # Log the full argv so a support bundle shows the actual ffmpeg flags
+    # (probesize, analyzeduration, transport, ...). Only camera_url carries a
+    # secret (the access code), so redact just that one element.
+    _redacted_cmd = ["rtsp://<redacted>/streaming/live/1" if a == camera_url else a for a in cmd]
+    logger.debug("ffmpeg command: %s", " ".join(_redacted_cmd))
 
     # On Windows, spawn ffmpeg in its own process group so that
     # terminate() doesn't broadcast CTRL_C_EVENT to uvicorn (#605).
@@ -742,17 +772,36 @@ async def stop_camera_stream(
     printer_id: int,
     _: User | None = RequirePermissionIfAuthEnabled(Permission.CAMERA_VIEW),
 ):
-    """Stop all active camera streams for a printer.
+    """Stop active camera streams for a printer.
 
-    This can be called by the frontend when the camera window is closed.
-    Accepts both GET and POST (POST for sendBeacon compatibility).
+    Called by the frontend on viewer unmount (cam-wall tile, embedded viewer,
+    popup window). Accepts both GET and POST (POST for sendBeacon compatibility).
+
+    Reference-count guard: every viewer of a printer subscribes to the same
+    fan-out broadcaster, so a force-shutdown triggered by ONE leaving viewer
+    used to kill the others' streams (cam-wall tile froze when a user opened
+    then closed the embedded viewer). If any subscriber is still attached,
+    skip the force-teardown — the broadcaster's natural grace-shutdown (5 s
+    after subscribers drop to 0) handles cleanup when the leaving viewer's
+    HTTP connection actually closes.
     """
+    broadcaster_key = f"printer-{printer_id}"
+    remaining_subscribers = get_subscriber_count(broadcaster_key)
+    if remaining_subscribers >= 1:
+        logger.info(
+            "Skipping force-shutdown for printer %s: %d subscriber(s) still attached; "
+            "natural cleanup will tear down when last viewer disconnects",
+            printer_id,
+            remaining_subscribers,
+        )
+        return {"stopped": 0, "skipped": True}
+
     stopped = 0
 
     # Tear down the fan-out broadcaster first (#1089). This cleanly notifies
     # all subscribed viewers and asks the upstream generator to stop
     # reconnecting before we fall back to forcefully killing the process below.
-    if await shutdown_broadcaster(f"printer-{printer_id}"):
+    if await shutdown_broadcaster(broadcaster_key):
         logger.info("Shut down camera fan-out broadcaster for printer %s", printer_id)
 
     # Stop ffmpeg/RTSP streams

@@ -1,11 +1,13 @@
 """Unit tests for Spoolman tracking service helpers."""
 
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.app.services.spoolman_tracking import (
+    _apply_spool_colors_to_archive,
     _get_fallback_spool_tag,
     _global_tray_id_to_ams_slot,
     _hash_serial_to_hex32,
@@ -212,8 +214,14 @@ class TestStorePrintData:
     @pytest.mark.asyncio
     async def test_prefers_explicit_ams_mapping_over_queue_mapping(self):
         db = AsyncMock()
+        # store_print_data now queries the queue item unconditionally (to pick up
+        # plate_id for multi-plate 3MFs, #1697), then deletes any stale spoolman
+        # row before inserting the new one. Two execute calls in that order.
+        queue_item = SimpleNamespace(ams_mapping=json.dumps([2, -1, -1, -1]), plate_id=None)
+        queue_result = MagicMock()
+        queue_result.scalar_one_or_none.return_value = queue_item
         delete_result = MagicMock()
-        db.execute = AsyncMock(side_effect=[delete_result])
+        db.execute = AsyncMock(side_effect=[queue_result, delete_result])
         db.add = MagicMock()
         db.commit = AsyncMock()
 
@@ -249,7 +257,7 @@ class TestStorePrintData:
         db.add.assert_called_once()
         tracking = db.add.call_args.args[0]
         assert tracking.slot_to_tray == [1, -1, -1, -1]
-        db.execute.assert_called_once()
+        assert db.execute.await_count == 2
 
     @pytest.mark.asyncio
     async def test_stores_tracking_when_disable_weight_sync_is_false(self):
@@ -300,3 +308,69 @@ class TestStorePrintData:
 
         # Tracking row was inserted — the fix is working.
         db.add.assert_called_once()
+
+
+class TestApplySpoolColorsToArchive:
+    """`_apply_spool_colors_to_archive` stamps the archive's filament_color
+    from the matched Spoolman spools (#1494) — the Spoolman-mode mirror of
+    the built-in inventory rewrite in usage_tracker."""
+
+    def _make_db(self, archive):
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=archive)))
+        return db
+
+    @pytest.mark.asyncio
+    async def test_rewrites_color_from_spoolman_spool(self):
+        """The #1494 case: 3MF said #161616, the Spoolman spool is 000000."""
+        archive = MagicMock()
+        archive.filament_color = "#161616"
+        db = self._make_db(archive)
+
+        await _apply_spool_colors_to_archive(
+            db,
+            archive_id=10,
+            filament_usage=[{"slot_id": 1, "used_g": 15.9}],
+            slot_colors={1: "000000"},
+        )
+
+        assert archive.filament_color == "#000000"
+        db.commit.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_empty_slot_colors_is_noop(self):
+        """No resolved spool colours — never touches the DB."""
+        db = self._make_db(MagicMock())
+        await _apply_spool_colors_to_archive(
+            db, archive_id=10, filament_usage=[{"slot_id": 1, "used_g": 15.9}], slot_colors={}
+        )
+        db.execute.assert_not_awaited()
+        db.commit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_partial_match_leaves_archive_untouched(self):
+        """Slot 2 used but unresolved — keep the 3MF colour, don't load the archive."""
+        db = self._make_db(MagicMock())
+        await _apply_spool_colors_to_archive(
+            db,
+            archive_id=10,
+            filament_usage=[
+                {"slot_id": 1, "used_g": 10.0},
+                {"slot_id": 2, "used_g": 20.0},
+            ],
+            slot_colors={1: "000000"},
+        )
+        db.execute.assert_not_awaited()
+        db.commit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_missing_archive_does_not_crash(self):
+        """Archive row gone (deleted between completion and reporting)."""
+        db = self._make_db(None)
+        await _apply_spool_colors_to_archive(
+            db,
+            archive_id=10,
+            filament_usage=[{"slot_id": 1, "used_g": 15.9}],
+            slot_colors={1: "000000"},
+        )
+        db.commit.assert_not_awaited()

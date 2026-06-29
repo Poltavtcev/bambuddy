@@ -7,6 +7,7 @@ import ssl
 import threading
 import time
 from collections.abc import Awaitable, Callable
+from enum import Enum
 from ftplib import FTP, FTP_TLS  # nosec B402
 from io import BytesIO
 from pathlib import Path
@@ -15,6 +16,22 @@ from typing import TypeVar
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+
+class DeleteResult(Enum):
+    """Outcome of an FTP delete attempt.
+
+    Distinguishes "file isn't on the printer" (550, recovery impossible by
+    retrying) from "delete failed for some other reason" (network, auth,
+    transient FTP error — worth retrying). The post-print SD-card cleanup in
+    main.py used to flatten both into ``False`` and log a "may linger" WARNING
+    on every successful print where the printer self-cleaned its SD card
+    before our cleanup ran (#1721 reporter's A1).
+    """
+
+    DELETED = "deleted"
+    NOT_FOUND = "not_found"
+    FAILED = "failed"
 
 
 class FileNotOnPrinterError(Exception):
@@ -35,15 +52,20 @@ class ImplicitFTP_TLS(FTP_TLS):
     A1/A1 Mini printers have issues with SSL on the data channel entirely and
     timeout waiting for transfer completion. Set skip_session_reuse=True for A1
     printers to skip SSL on the data channel (control channel remains encrypted).
+
+    Optionally caps the SSL context's maximum TLS version to v1.2 (P2S firmware
+    01.02.00.00 needs this — see :mod:`ftp_profiles` and #1401).
     """
 
-    def __init__(self, *args, skip_session_reuse: bool = False, **kwargs):
+    def __init__(self, *args, skip_session_reuse: bool = False, cap_tls_v1_2: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         self._sock = None
         self.skip_session_reuse = skip_session_reuse
         self.ssl_context = ssl.create_default_context()
         self.ssl_context.check_hostname = False
         self.ssl_context.verify_mode = ssl.CERT_NONE
+        if cap_tls_v1_2:
+            self.ssl_context.maximum_version = ssl.TLSVersion.TLSv1_2
 
     def connect(self, host="", port=990, timeout=-999, source_address=None):
         """Connect to host, wrapping socket in TLS immediately (implicit FTPS)."""
@@ -150,11 +172,18 @@ class BambuFTPClient:
         """Connect to the printer FTP server (implicit FTPS on port 990)."""
         try:
             use_prot_c = self._should_use_prot_c()
+            from backend.app.services.ftp_profiles import get_ftp_profile
+
+            profile = get_ftp_profile(self.printer_model)
             logger.debug(
                 f"FTP connecting to {self.ip_address}:{self.FTP_PORT} "
-                f"(timeout={self.timeout}s, model={self.printer_model}, prot_c={use_prot_c})"
+                f"(timeout={self.timeout}s, model={self.printer_model}, prot_c={use_prot_c}, "
+                f"cap_tls_v1_2={profile.cap_tls_v1_2})"
             )
-            self._ftp = ImplicitFTP_TLS(skip_session_reuse=use_prot_c)
+            self._ftp = ImplicitFTP_TLS(
+                skip_session_reuse=use_prot_c,
+                cap_tls_v1_2=profile.cap_tls_v1_2,
+            )
             self._ftp.connect(self.ip_address, self.FTP_PORT, timeout=self.timeout)
             logger.debug("FTP connected, logging in as bblp")
             self._ftp.login("bblp", self.access_code)
@@ -495,14 +524,16 @@ class BambuFTPClient:
                 )
 
             if callback_exception is not None:
-                cleanup_ok = False
+                cleanup_result: DeleteResult = DeleteResult.FAILED
                 try:
-                    cleanup_ok = self.delete_file(remote_path)
+                    cleanup_result = self.delete_file(remote_path)
                 except Exception as cleanup_error:
                     logger.warning("FTP cancel cleanup failed for %s: %s", remote_path, cleanup_error)
 
-                if cleanup_ok:
-                    logger.info("FTP cancel cleanup succeeded for %s", remote_path)
+                # NOT_FOUND is success here — the partial file is gone (printer
+                # may have already swept on cancel), which is the goal.
+                if cleanup_result in (DeleteResult.DELETED, DeleteResult.NOT_FOUND):
+                    logger.info("FTP cancel cleanup succeeded for %s (%s)", remote_path, cleanup_result.value)
                     raise callback_exception
 
                 raise RuntimeError(
@@ -609,17 +640,28 @@ class BambuFTPClient:
         except (OSError, ftplib.Error):
             return False
 
-    def delete_file(self, remote_path: str) -> bool:
-        """Delete a file from the printer."""
+    def delete_file(self, remote_path: str) -> DeleteResult:
+        """Delete a file from the printer.
+
+        Returns :class:`DeleteResult` distinguishing the file-not-found case
+        (550) from network / auth / transient FTP failure. Callers that just
+        want "did it work" should check ``result == DeleteResult.DELETED``.
+        """
         if not self._ftp:
-            return False
+            return DeleteResult.FAILED
 
         try:
             self._ftp.delete(remote_path)
-            return True
+            return DeleteResult.DELETED
+        except ftplib.error_perm as e:
+            if str(e).startswith("550"):
+                logger.debug("FTP delete: %s not on printer (550)", remote_path)
+                return DeleteResult.NOT_FOUND
+            logger.warning("Failed to delete %s: %s", remote_path, e)
+            return DeleteResult.FAILED
         except (OSError, ftplib.Error) as e:
             logger.warning("Failed to delete %s: %s", remote_path, e)
-            return False
+            return DeleteResult.FAILED
 
     def get_file_size(self, remote_path: str) -> int | None:
         """Get the size of a file."""
@@ -1043,8 +1085,12 @@ async def delete_file_async(
     remote_path: str,
     socket_timeout: float | None = None,
     printer_model: str | None = None,
-) -> bool:
+) -> DeleteResult:
     """Async wrapper for deleting a file.
+
+    Returns :class:`DeleteResult` so callers can distinguish ``NOT_FOUND``
+    (550 — file isn't on the printer, no retry value) from ``FAILED``
+    (network / auth / transient — worth retrying or surfacing).
 
     Args:
         socket_timeout: FTP socket timeout for slow connections (e.g., A1 printers)
@@ -1052,14 +1098,14 @@ async def delete_file_async(
     """
     loop = asyncio.get_event_loop()
 
-    def _delete():
+    def _delete() -> DeleteResult:
         client = BambuFTPClient(ip_address, access_code, timeout=socket_timeout, printer_model=printer_model)
         if client.connect():
             try:
                 return client.delete_file(remote_path)
             finally:
                 client.disconnect()
-        return False
+        return DeleteResult.FAILED
 
     return await loop.run_in_executor(None, _delete)
 
