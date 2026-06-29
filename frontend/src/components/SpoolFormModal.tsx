@@ -959,6 +959,7 @@ export function SpoolFormModal({
                   }}
                   globalLowStockThreshold={globalLowStockThreshold}
                   spoolmanMode={spoolmanMode}
+                  spoolId={spool?.id ?? null}
                 />
               </div>
 

@@ -352,3 +352,136 @@ async def maybe_sync_spoolman_locations(db: AsyncSession, *, client=None) -> boo
     changed = await sync_locations_from_spoolman(db, client)
     _spoolman_location_sync_last_run[cache_key] = now
     return changed
+
+
+def snapshot_location_state(
+    location_id: int | None,
+    storage_location: str | None,
+) -> tuple[int | None, str | None]:
+    """Normalize spool location fields for comparison and history snapshots."""
+    name = (storage_location or "").strip() or None
+    return location_id, name
+
+
+def location_state_changed(
+    old_location_id: int | None,
+    old_name: str | None,
+    new_location_id: int | None,
+    new_name: str | None,
+) -> bool:
+    if old_location_id != new_location_id:
+        return True
+    return (old_name or "").lower() != (new_name or "").lower()
+
+
+async def record_location_change_if_needed(
+    db: AsyncSession,
+    *,
+    spool_id: int | None = None,
+    spoolman_spool_id: int | None = None,
+    old_location_id: int | None,
+    old_name: str | None,
+    new_location_id: int | None,
+    new_name: str | None,
+    source: str,
+    user_id: int | None,
+) -> bool:
+    """Append a history row when structured or denormalized location state changes."""
+    if spool_id is None and spoolman_spool_id is None:
+        return False
+
+    if old_location_id and not old_name:
+        loc = await get_location_by_id(db, old_location_id)
+        if loc:
+            old_name = loc.name
+    if new_location_id and not new_name:
+        loc = await get_location_by_id(db, new_location_id)
+        if loc:
+            new_name = loc.name
+
+    if not location_state_changed(old_location_id, old_name, new_location_id, new_name):
+        return False
+
+    from backend.app.models.spool_location_history import SpoolLocationHistory
+
+    db.add(
+        SpoolLocationHistory(
+            spool_id=spool_id,
+            spoolman_spool_id=spoolman_spool_id,
+            from_location_id=old_location_id,
+            to_location_id=new_location_id,
+            from_name=old_name,
+            to_name=new_name,
+            source=source,
+            user_id=user_id,
+        )
+    )
+    return True
+
+
+async def maybe_record_internal_spool_location_change(
+    db: AsyncSession,
+    spool: Spool,
+    prepared: dict,
+    fields_set: set[str],
+    *,
+    source: str,
+    user_id: int | None,
+) -> None:
+    """Record history when an internal spool update includes location field changes."""
+    if "location_id" not in fields_set and "storage_location" not in fields_set:
+        return
+    old_id, old_name = snapshot_location_state(spool.location_id, spool.storage_location)
+    new_id = prepared.get("location_id", spool.location_id)
+    new_name = prepared.get("storage_location", spool.storage_location)
+    new_id, new_name = snapshot_location_state(new_id, new_name)
+    await record_location_change_if_needed(
+        db,
+        spool_id=spool.id,
+        old_location_id=old_id,
+        old_name=old_name,
+        new_location_id=new_id,
+        new_name=new_name,
+        source=source,
+        user_id=user_id,
+    )
+
+
+async def list_spool_location_history(
+    db: AsyncSession,
+    *,
+    spool_id: int | None = None,
+    spoolman_spool_id: int | None = None,
+    limit: int = 50,
+) -> list:
+    from backend.app.models.spool_location_history import SpoolLocationHistory
+
+    stmt = select(SpoolLocationHistory).order_by(SpoolLocationHistory.created_at.desc()).limit(limit)
+    if spool_id is not None:
+        stmt = stmt.where(SpoolLocationHistory.spool_id == spool_id)
+    elif spoolman_spool_id is not None:
+        stmt = stmt.where(SpoolLocationHistory.spoolman_spool_id == spoolman_spool_id)
+    else:
+        return []
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def list_location_moves(
+    db: AsyncSession,
+    location_id: int,
+    *,
+    limit: int = 50,
+) -> list:
+    from backend.app.models.spool_location_history import SpoolLocationHistory
+
+    result = await db.execute(
+        select(SpoolLocationHistory)
+        .where(
+            (SpoolLocationHistory.from_location_id == location_id)
+            | (SpoolLocationHistory.to_location_id == location_id)
+        )
+        .order_by(SpoolLocationHistory.created_at.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())

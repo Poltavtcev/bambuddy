@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Scale } from 'lucide-react';
+import { Scale, ChevronDown, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../../api/client';
 import { useToast } from '../../contexts/ToastContext';
 import type { AdditionalSectionProps } from './types';
 
@@ -178,15 +180,26 @@ export function AdditionalSection({
   onCreateLocation,
   globalLowStockThreshold,
   spoolmanMode = false,
+  spoolId = null,
 }: AdditionalSectionProps) {
   const { t } = useTranslation();
   const { showToast } = useToast();
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [measuredInput, setMeasuredInput] = useState('');
   const [isMeasuredFocused, setIsMeasuredFocused] = useState(false);
   const [remainingInput, setRemainingInput] = useState('');
   const [isRemainingFocused, setIsRemainingFocused] = useState(false);
   const [newLocationName, setNewLocationName] = useState('');
   const [creatingLocation, setCreatingLocation] = useState(false);
+
+  const { data: locationHistory = [], isLoading: historyLoading } = useQuery({
+    queryKey: ['spool-location-history', spoolmanMode, spoolId],
+    queryFn: () =>
+      spoolmanMode
+        ? api.getSpoolmanSpoolLocationHistory(spoolId!, 20)
+        : api.getInventorySpoolLocationHistory(spoolId!, 20),
+    enabled: historyOpen && spoolId != null,
+  });
 
   const remainingWeight = Math.max(0, formData.label_weight - formData.weight_used);
   const measuredDefault = formData.core_weight + remainingWeight;
@@ -438,6 +451,40 @@ export function AdditionalSection({
             >
               {t('locations.addShort')}
             </button>
+          </div>
+        )}
+        {spoolId != null && (
+          <div className="mt-3">
+            <button
+              type="button"
+              className="flex items-center gap-1 text-xs text-bambu-gray hover:text-white"
+              onClick={() => setHistoryOpen((v) => !v)}
+            >
+              {historyOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+              {t('locations.history')}
+            </button>
+            {historyOpen && (
+              <div className="mt-2 rounded-lg border border-bambu-dark-tertiary bg-bambu-dark/50 p-2">
+                {historyLoading ? (
+                  <p className="text-xs text-bambu-gray">{t('common.loading')}</p>
+                ) : locationHistory.length === 0 ? (
+                  <p className="text-xs text-bambu-gray">{t('locations.historyEmpty')}</p>
+                ) : (
+                  <ul className="space-y-1.5 text-xs">
+                    {locationHistory.map((entry) => (
+                      <li key={entry.id} className="text-bambu-gray">
+                        <span className="text-white">{entry.from_name || t('inventory.storageLocationNone')}</span>
+                        {' → '}
+                        <span className="text-white">{entry.to_name || t('inventory.storageLocationNone')}</span>
+                        <span className="ml-1 text-[10px] uppercase opacity-70">
+                          {t(`locations.source.${entry.source}`, entry.source)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

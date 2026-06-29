@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { MapPin, Plus, Loader2, Pencil, Trash2, X } from 'lucide-react';
+import { MapPin, Plus, Loader2, Pencil, Trash2, X, History } from 'lucide-react';
 import { api, type StorageLocation } from '../api/client';
 import { Button } from './Button';
 import { ConfirmModal } from './ConfirmModal';
@@ -23,6 +23,13 @@ export function LocationsModal({ open, onClose, onPickLocation }: LocationsModal
   const [editing, setEditing] = useState<StorageLocation | null>(null);
   const [name, setName] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<StorageLocation | null>(null);
+  const [historyLocationId, setHistoryLocationId] = useState<number | null>(null);
+
+  const { data: locationMoves = [], isLoading: movesLoading } = useQuery({
+    queryKey: ['location-moves', historyLocationId],
+    queryFn: () => api.getLocationMoves(historyLocationId!, 5),
+    enabled: open && historyLocationId != null,
+  });
 
   const { data: locations = [], isLoading } = useQuery({
     queryKey: inventoryLocationsQueryKey,
@@ -191,6 +198,15 @@ export function LocationsModal({ open, onClose, onPickLocation }: LocationsModal
                       <div className="flex items-center justify-end gap-1">
                         <button
                           type="button"
+                          className={`p-1.5 rounded ${historyLocationId === loc.id ? 'text-bambu-green' : 'text-bambu-gray hover:text-white'}`}
+                          onClick={() => setHistoryLocationId((prev) => (prev === loc.id ? null : loc.id))}
+                          title={t('locations.history')}
+                          aria-label={t('locations.history')}
+                        >
+                          <History className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
                           className="p-1.5 text-bambu-gray hover:text-bambu-green rounded"
                           onClick={() => openEdit(loc)}
                           title={t('common.edit')}
@@ -214,6 +230,36 @@ export function LocationsModal({ open, onClose, onPickLocation }: LocationsModal
                 ))}
               </tbody>
             </table>
+          )}
+          {historyLocationId != null && (
+            <div className="border-t border-bambu-dark-tertiary px-4 py-3">
+              <h3 className="text-sm font-medium text-white mb-2">{t('locations.recentMoves')}</h3>
+              {movesLoading ? (
+                <div className="text-bambu-gray text-sm flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {t('common.loading')}
+                </div>
+              ) : locationMoves.length === 0 ? (
+                <p className="text-sm text-bambu-gray">{t('locations.historyEmpty')}</p>
+              ) : (
+                <ul className="space-y-2 text-sm">
+                  {locationMoves.map((entry) => (
+                    <li key={entry.id} className="text-bambu-gray">
+                      <span className="text-white">
+                        {entry.from_name || t('inventory.storageLocationNone')}
+                      </span>
+                      {' → '}
+                      <span className="text-white">
+                        {entry.to_name || t('inventory.storageLocationNone')}
+                      </span>
+                      <span className="ml-2 text-xs uppercase text-bambu-gray/70">
+                        {t(`locations.source.${entry.source}`, entry.source)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
         </div>
       </div>

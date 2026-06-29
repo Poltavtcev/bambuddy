@@ -21,6 +21,7 @@ import { ColumnConfigModal, type ColumnConfig } from '../components/ColumnConfig
 import { LabelTemplatePickerModal } from '../components/LabelTemplatePickerModal';
 import { SpoolCsvImportModal } from '../components/SpoolCsvImportModal';
 import { LocationsModal } from '../components/LocationsModal';
+import { MoveSpoolModal } from '../components/MoveSpoolModal';
 import { BulkEditSpoolsModal } from '../components/BulkEditSpoolsModal';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -54,6 +55,12 @@ function dedupeAndSort(values: Array<string | null | undefined>): string[] {
     }
   }
   return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+function storageLabelForSpool(spool: InventorySpool, byId: Record<number, string>): string | null {
+  if (spool.location_id != null && byId[spool.location_id]) return byId[spool.location_id];
+  const text = spool.storage_location?.trim();
+  return text || null;
 }
 
 function spoolGroupKey(s: InventorySpool): string {
@@ -167,11 +174,13 @@ type CellCtx = {
   remaining: number;
   pct: number;
   assignmentMap: Record<number, LocationDisplay>;
+  storageLocationById: Record<number, string>;
   catalogMap: Record<number, SpoolCatalogEntry>;
   currencySymbol: string;
   dateFormat: DateFormat;
   t: TFn;
   onSyncWeight?: (spool: InventorySpool) => void;
+  onMoveSpool?: (spool: InventorySpool) => void;
 };
 
 // Column header labels (25 columns — matching SpoolBuddy exactly)
@@ -249,25 +258,62 @@ const columnCells: Record<string, (ctx: CellCtx) => ReactNode> = {
       {spool.slicer_filament_name || spool.slicer_filament || '-'}
     </span>
   ),
-  location: ({ spool, assignmentMap }) => {
+  location: ({ spool, assignmentMap, storageLocationById, onMoveSpool, t }) => {
     const assignment = assignmentMap[spool.id];
-    if (!assignment) return <span className="text-sm text-bambu-gray">-</span>;
-    const printerLabel = assignment.printer_name || `Printer ${assignment.printer_id}`;
-    const isExternal = assignment.ams_id === 254 || assignment.ams_id === 255;
-    const isHt = !isExternal && assignment.ams_id >= 128;
-    const slotLabel = formatSlotLabel(assignment.ams_id, assignment.tray_id, isHt, isExternal);
-    return (
-      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-500/20 text-purple-400">
-        {printerLabel} {slotLabel}{assignment.ams_label ? ` (${assignment.ams_label})` : ''}
+    if (assignment) {
+      const printerLabel = assignment.printer_name || `Printer ${assignment.printer_id}`;
+      const isExternal = assignment.ams_id === 254 || assignment.ams_id === 255;
+      const isHt = !isExternal && assignment.ams_id >= 128;
+      const slotLabel = formatSlotLabel(assignment.ams_id, assignment.tray_id, isHt, isExternal);
+      return (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-500/20 text-purple-400">
+          {printerLabel} {slotLabel}{assignment.ams_label ? ` (${assignment.ams_label})` : ''}
+        </span>
+      );
+    }
+    const storageLabel = storageLabelForSpool(spool, storageLocationById);
+    if (!storageLabel) return <span className="text-sm text-bambu-gray">-</span>;
+    const chip = (
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-400">
+        {storageLabel}
       </span>
     );
-  },
-  storage_location: ({ spool }) => {
-    if (!spool.storage_location) return <span className="text-sm text-bambu-gray">-</span>;
+    if (!onMoveSpool) return chip;
     return (
+      <button
+        type="button"
+        className="text-left"
+        title={t('locations.move')}
+        onClick={(e) => {
+          e.stopPropagation();
+          onMoveSpool(spool);
+        }}
+      >
+        {chip}
+      </button>
+    );
+  },
+  storage_location: ({ spool, storageLocationById, onMoveSpool, t }) => {
+    const label = storageLabelForSpool(spool, storageLocationById);
+    if (!label) return <span className="text-sm text-bambu-gray">-</span>;
+    const chip = (
       <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-400">
-        {spool.storage_location}
+        {label}
       </span>
+    );
+    if (!onMoveSpool) return chip;
+    return (
+      <button
+        type="button"
+        className="text-left"
+        title={t('locations.move')}
+        onClick={(e) => {
+          e.stopPropagation();
+          onMoveSpool(spool);
+        }}
+      >
+        {chip}
+      </button>
     );
   },
   label_weight: ({ spool }) => (
@@ -496,6 +542,7 @@ function InventoryPage({ spoolmanMode = false, spoolmanModeReady = true }: { spo
   const [csvImportOpen, setCsvImportOpen] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
   const [locationsModalOpen, setLocationsModalOpen] = useState(false);
+  const [moveSpoolTarget, setMoveSpoolTarget] = useState<InventorySpool | null>(null);
 
   // Filter state
   const [archiveFilter, setArchiveFilter] = useState<ArchiveFilter>('active');
@@ -593,6 +640,12 @@ function InventoryPage({ spoolmanMode = false, spoolmanModeReady = true }: { spo
     queryKey: inventoryLocationsQueryKey,
     queryFn: api.getLocations,
   });
+  const storageLocationById = useMemo(() => {
+    const map: Record<number, string> = {};
+    for (const loc of storageLocations) map[loc.id] = loc.name;
+    return map;
+  }, [storageLocations]);
+  const handleMoveSpool = useCallback((spool: InventorySpool) => setMoveSpoolTarget(spool), []);
 
   // Deep-link / filter: ?location_id=<id> or ?location_id=__none__
   const _rawLocationParam = searchParams.get('location_id');
@@ -2076,8 +2129,10 @@ function InventoryPage({ spoolmanMode = false, spoolmanModeReady = true }: { spo
                           onDelete={(id) => setConfirmAction({ type: 'delete', spoolId: id })}
                           onPrintLabel={(id) => setLabelPickerSpoolIds([id])}
                           onResetConsumedCounter={(id) => setConfirmAction({ type: 'reset-consumed-counter', spoolId: id })}
+                          onMove={handleMoveSpool}
                           visibleColumns={visibleColumns}
                           assignmentMap={assignmentMap}
+                          storageLocationById={storageLocationById}
                           catalogMap={catalogMap}
                           currencySymbol={currencySymbol}
                           dateFormat={dateFormat}
@@ -2104,8 +2159,10 @@ function InventoryPage({ spoolmanMode = false, spoolmanModeReady = true }: { spo
                         onDelete={() => setConfirmAction({ type: 'delete', spoolId: spool.id })}
                         onPrintLabel={() => setLabelPickerSpoolIds([spool.id])}
                         onResetConsumedCounter={() => setConfirmAction({ type: 'reset-consumed-counter', spoolId: spool.id })}
+                        onMove={() => handleMoveSpool(spool)}
                         visibleColumns={visibleColumns}
                         assignmentMap={assignmentMap}
+                        storageLocationById={storageLocationById}
                         catalogMap={catalogMap}
                         currencySymbol={currencySymbol}
                         dateFormat={dateFormat}
@@ -2327,6 +2384,13 @@ function InventoryPage({ spoolmanMode = false, spoolmanModeReady = true }: { spo
         onClose={() => setLocationsModalOpen(false)}
         onPickLocation={(id) => setStorageLocationFilter(String(id))}
       />
+
+      <MoveSpoolModal
+        open={moveSpoolTarget !== null}
+        spool={moveSpoolTarget}
+        spoolmanMode={spoolmanMode}
+        onClose={() => setMoveSpoolTarget(null)}
+      />
     </div>
   );
 }
@@ -2516,8 +2580,8 @@ function SpoolCard({
 /* Single spool row for table view */
 function SpoolTableRow({
   spool, remaining, pct, isSelected, onToggleSelected,
-  onEdit, onCopy, onRestore, onArchive, onDelete, onPrintLabel, onResetConsumedCounter,
-  visibleColumns, assignmentMap, catalogMap, currencySymbol, dateFormat, t, onSyncWeight,
+  onEdit, onCopy, onRestore, onArchive, onDelete, onPrintLabel, onResetConsumedCounter, onMove,
+  visibleColumns, assignmentMap, storageLocationById, catalogMap, currencySymbol, dateFormat, t, onSyncWeight,
 }: {
   spool: InventorySpool;
   remaining: number;
@@ -2531,14 +2595,29 @@ function SpoolTableRow({
   onDelete: () => void;
   onPrintLabel?: () => void;
   onResetConsumedCounter?: () => void;
+  onMove?: () => void;
   visibleColumns: string[];
   assignmentMap: Record<number, LocationDisplay>;
+  storageLocationById: Record<number, string>;
   catalogMap: Record<number, SpoolCatalogEntry>;
   currencySymbol: string;
   dateFormat: DateFormat;
   t: TFn;
   onSyncWeight?: (spool: InventorySpool) => void;
 }) {
+  const cellBase = {
+    spool,
+    remaining,
+    pct,
+    assignmentMap,
+    storageLocationById,
+    catalogMap,
+    currencySymbol,
+    dateFormat,
+    t,
+    onSyncWeight,
+    onMoveSpool: onMove ? () => onMove() : undefined,
+  };
   return (
     <tr
       className={`border-b border-bambu-dark-tertiary/50 hover:bg-bambu-dark-tertiary/30 transition-colors cursor-pointer ${
@@ -2559,11 +2638,16 @@ function SpoolTableRow({
       </td>
       {visibleColumns.map((colId) => (
         <td key={colId} className="py-3 px-4">
-          {columnCells[colId]?.({ spool, remaining, pct, assignmentMap, catalogMap, currencySymbol, dateFormat, t, onSyncWeight })}
+          {columnCells[colId]?.(cellBase)}
         </td>
       ))}
       <td className="py-3 px-4">
         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+          {onMove && (
+            <button onClick={onMove} className="p-1.5 text-bambu-gray hover:text-blue-400 rounded transition-colors" title={t('locations.move')}>
+              <MapPin className="w-4 h-4" />
+            </button>
+          )}
           <button onClick={onEdit} className="p-1.5 text-bambu-gray hover:text-white rounded transition-colors" title={t('common.edit')}>
             <Edit2 className="w-4 h-4" />
           </button>
@@ -2607,8 +2691,8 @@ function SpoolTableRow({
 /* Grouped spool rows for table view */
 function SpoolTableGroup({
   spools, headerSpool, remaining, pct, isExpanded, onToggle,
-  onEdit, onCopy, onArchive, onDelete, onPrintLabel, onResetConsumedCounter,
-  visibleColumns, assignmentMap, catalogMap, currencySymbol, dateFormat, t, onSyncWeight,
+  onEdit, onCopy, onArchive, onDelete, onPrintLabel, onResetConsumedCounter, onMove,
+  visibleColumns, assignmentMap, storageLocationById, catalogMap, currencySymbol, dateFormat, t, onSyncWeight,
   selectedIds, onToggleSelected, onToggleGroupSelected,
 }: {
   spools: InventorySpool[];
@@ -2625,8 +2709,10 @@ function SpoolTableGroup({
   onDelete: (id: number) => void;
   onPrintLabel?: (spoolId: number) => void;
   onResetConsumedCounter?: (id: number) => void;
+  onMove?: (spool: InventorySpool) => void;
   visibleColumns: string[];
   assignmentMap: Record<number, LocationDisplay>;
+  storageLocationById: Record<number, string>;
   catalogMap: Record<number, SpoolCatalogEntry>;
   currencySymbol: string;
   dateFormat: DateFormat;
@@ -2636,6 +2722,18 @@ function SpoolTableGroup({
   onToggleSelected?: (id: number) => void;
   onToggleGroupSelected?: (ids: number[], select: boolean) => void;
 }) {
+  const headerCellBase = {
+    spool: headerSpool,
+    remaining,
+    pct,
+    assignmentMap,
+    storageLocationById,
+    catalogMap,
+    currencySymbol,
+    dateFormat,
+    t,
+    onSyncWeight,
+  };
   const allMembersSelected = !!selectedIds && spools.every((s) => selectedIds.has(s.id));
   return (
     <>
@@ -2660,14 +2758,14 @@ function SpoolTableGroup({
             {idx === 0 ? (
               <div className="flex items-center gap-2">
                 <ChevronDown className={`w-4 h-4 text-bambu-gray transition-transform ${isExpanded ? '' : '-rotate-90'}`} />
-                {columnCells[colId]?.({ spool: headerSpool, remaining, pct, assignmentMap, catalogMap, currencySymbol, dateFormat, t, onSyncWeight })}
+                {columnCells[colId]?.(headerCellBase)}
               </div>
             ) : colId === 'id' ? (
               <span className="text-xs font-medium bg-bambu-green/20 text-bambu-green px-2 py-0.5 rounded-full">
                 {t('inventory.groupedSpools', { count: spools.length })}
               </span>
             ) : (
-              columnCells[colId]?.({ spool: headerSpool, remaining, pct, assignmentMap, catalogMap, currencySymbol, dateFormat, t, onSyncWeight })
+              columnCells[colId]?.(headerCellBase)
             )}
           </td>
         ))}
@@ -2696,8 +2794,10 @@ function SpoolTableGroup({
             onDelete={() => onDelete(spool.id)}
             onPrintLabel={onPrintLabel ? () => onPrintLabel(spool.id) : undefined}
             onResetConsumedCounter={onResetConsumedCounter ? () => onResetConsumedCounter(spool.id) : undefined}
+            onMove={onMove ? () => onMove(spool) : undefined}
             visibleColumns={visibleColumns}
             assignmentMap={assignmentMap}
+            storageLocationById={storageLocationById}
             catalogMap={catalogMap}
             currencySymbol={currencySymbol}
             dateFormat={dateFormat}

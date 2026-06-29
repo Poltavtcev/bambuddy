@@ -205,6 +205,7 @@ async def init_db():
         spool_assignment,
         spool_catalog,
         spool_k_profile,
+        spool_location_history,
         spool_usage_history,
         spoolbuddy_device,
         spoolman_k_profile,
@@ -3207,6 +3208,52 @@ async def run_migrations(conn):
             "names manually.",
             orphan_count,
         )
+
+    # Migration: spool location move history (#1004 Phase 2).
+    await _safe_execute(
+        conn,
+        """
+        CREATE TABLE IF NOT EXISTS spool_location_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            spool_id INTEGER REFERENCES spool(id) ON DELETE CASCADE,
+            spoolman_spool_id INTEGER,
+            from_location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
+            to_location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
+            from_name VARCHAR(255),
+            to_name VARCHAR(255),
+            source VARCHAR(32) NOT NULL,
+            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+        if is_sqlite()
+        else """
+        CREATE TABLE IF NOT EXISTS spool_location_history (
+            id SERIAL PRIMARY KEY,
+            spool_id INTEGER REFERENCES spool(id) ON DELETE CASCADE,
+            spoolman_spool_id INTEGER,
+            from_location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
+            to_location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
+            from_name VARCHAR(255),
+            to_name VARCHAR(255),
+            source VARCHAR(32) NOT NULL,
+            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+    )
+    await _safe_execute(
+        conn,
+        "CREATE INDEX IF NOT EXISTS ix_spool_location_history_spool_id ON spool_location_history (spool_id)",
+    )
+    await _safe_execute(
+        conn,
+        "CREATE INDEX IF NOT EXISTS ix_spool_location_history_spoolman_spool_id ON spool_location_history (spoolman_spool_id)",
+    )
+    await _safe_execute(
+        conn,
+        "CREATE INDEX IF NOT EXISTS ix_spool_location_history_created_at ON spool_location_history (created_at)",
+    )
 
     # Migration: Add on_ai_failure_detection column to notification_providers (#1794).
     # Splits Obico AI failure detection out of the multiplexed on_printer_error

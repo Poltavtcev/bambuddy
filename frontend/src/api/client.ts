@@ -1368,6 +1368,19 @@ export interface StorageLocation {
   updated_at: string;
 }
 
+export interface SpoolLocationHistoryEntry {
+  id: number;
+  spool_id: number | null;
+  spoolman_spool_id: number | null;
+  from_location_id: number | null;
+  to_location_id: number | null;
+  from_name: string | null;
+  to_name: string | null;
+  source: string;
+  user_id: number | null;
+  created_at: string;
+}
+
 export interface ColorCatalogEntry {
   id: number;
   manufacturer: string;
@@ -5238,6 +5251,15 @@ export const api = {
     request<StorageLocation>(`/inventory/locations/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteLocation: (id: number) =>
     request<{ status: string }>(`/inventory/locations/${id}`, { method: 'DELETE' }),
+  getLocationMoves: (locationId: number, limit = 50) =>
+    request<SpoolLocationHistoryEntry[]>(`/inventory/locations/${locationId}/moves?limit=${limit}`),
+  moveInventorySpool: (spoolId: number, locationId: number | null) =>
+    request<InventorySpool>(`/inventory/spools/${spoolId}/move`, {
+      method: 'POST',
+      body: JSON.stringify({ location_id: locationId }),
+    }),
+  getInventorySpoolLocationHistory: (spoolId: number, limit = 50) =>
+    request<SpoolLocationHistoryEntry[]>(`/inventory/spools/${spoolId}/location-history?limit=${limit}`),
   getColorCatalog: () =>
     request<ColorCatalogEntry[]>('/inventory/colors'),
   getColorNameMap: () =>
@@ -5370,6 +5392,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ ids }),
     }),
+  moveSpoolmanInventorySpool: (spoolId: number, locationId: number | null) =>
+    request<InventorySpool>(`/spoolman/inventory/spools/${spoolId}/move`, {
+      method: 'POST',
+      body: JSON.stringify({ location_id: locationId }),
+    }),
+  getSpoolmanSpoolLocationHistory: (spoolId: number, limit = 50) =>
+    request<SpoolLocationHistoryEntry[]>(`/spoolman/inventory/spools/${spoolId}/location-history?limit=${limit}`),
   linkTagToSpoolmanSpool: (spoolId: number, data: { tag_uid?: string; tray_uuid?: string }) =>
     request<InventorySpool>(`/spoolman/inventory/spools/${spoolId}/tag`, {
       method: 'PATCH',

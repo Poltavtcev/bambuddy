@@ -41,12 +41,16 @@ from backend.app.models.settings import Settings
 from backend.app.models.spoolman_k_profile import SpoolmanKProfile
 from backend.app.models.spoolman_slot_assignment import SpoolmanSlotAssignment
 from backend.app.models.user import User
+from backend.app.schemas.location_history import SpoolLocationHistoryResponse, SpoolMoveRequest
 from backend.app.schemas.spool import SpoolKProfileBase
 from backend.app.schemas.spoolman import SpoolmanFilamentPatch, SpoolmanSlotAssignmentEnriched
 from backend.app.services.location_service import (
     enrich_spool_dicts_with_location_id,
+    list_spool_location_history,
     maybe_sync_spoolman_locations,
+    record_location_change_if_needed,
     resolve_spoolman_location_string,
+    snapshot_location_state,
 )
 from backend.app.services.printer_manager import printer_manager
 from backend.app.services.slicer_filament_resolver import resolve_slicer_filament
@@ -80,6 +84,39 @@ _HEALTH_CHECK_TTL = 30.0  # seconds
 def _tag_cleared(val: str | None) -> bool:
     """Return True when a PATCH field explicitly removes a tag (null)."""
     return val is None
+
+
+async def _enrich_mapped_spool(db: AsyncSession, mapped: dict) -> dict:
+    await enrich_spool_dicts_with_location_id(db, [mapped])
+    return mapped
+
+
+async def _record_spoolman_location_change(
+    db: AsyncSession,
+    *,
+    spoolman_spool_id: int,
+    old_mapped: dict,
+    new_storage_location: str | None,
+    source: str,
+    user_id: int | None,
+) -> None:
+    old_id, old_name = snapshot_location_state(
+        old_mapped.get("location_id"),
+        old_mapped.get("storage_location"),
+    )
+    new_dict = {"storage_location": new_storage_location}
+    await enrich_spool_dicts_with_location_id(db, [new_dict])
+    new_id, new_name = snapshot_location_state(new_dict.get("location_id"), new_dict.get("storage_location"))
+    await record_location_change_if_needed(
+        db,
+        spoolman_spool_id=spoolman_spool_id,
+        old_location_id=old_id,
+        old_name=old_name,
+        new_location_id=new_id,
+        new_name=new_name,
+        source=source,
+        user_id=user_id,
+    )
 
 
 async def _clear_stale_tag_links(
@@ -518,7 +555,7 @@ async def _resolve_filament_id(data: SpoolmanInventoryCreate, client: SpoolmanCl
 async def create_spool(
     data: SpoolmanInventoryCreate,
     db: AsyncSession = Depends(get_db),
-    _: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_UPDATE),
+    user: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_UPDATE),
 ) -> dict:
     """Create a new spool in Spoolman, auto-creating vendor and filament as needed."""
     client = await _get_client(db)
@@ -584,7 +621,17 @@ async def create_spool(
                     spool.get("id"),
                 )
 
-    result = _map_spoolman_spool(spool)
+    result = await _enrich_mapped_spool(db, _map_spoolman_spool(spool))
+    if storage_location:
+        await _record_spoolman_location_change(
+            db,
+            spoolman_spool_id=result["id"],
+            old_mapped={"location_id": None, "storage_location": None},
+            new_storage_location=storage_location,
+            source="edit",
+            user_id=user.id if user else None,
+        )
+        await db.commit()
     await ws_manager.broadcast({"type": "inventory_changed"})
     if price_warnings:
         return JSONResponse(status_code=207, content={**result, "warnings": price_warnings})
@@ -652,6 +699,9 @@ async def bulk_create_spools(
             logger.warning("Bulk spool %s created without price: %s", spool.get("id"), price_warnings)
         created.append(_map_spoolman_spool(spool))
 
+    if created:
+        await enrich_spool_dicts_with_location_id(db, created)
+
     if not created:
         raise HTTPException(status_code=500, detail="Failed to create any spools in Spoolman")
 
@@ -673,19 +723,91 @@ async def bulk_create_spools(
     return JSONResponse(status_code=200, content=created)
 
 
+@router.get("/spools/{spool_id}/location-history", response_model=list[SpoolLocationHistoryResponse])
+async def get_spool_location_history(
+    spool_id: int = Path(..., gt=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_READ),
+) -> list:
+    """Location change history for a Spoolman spool."""
+    client = await _get_client(db)
+    async with _translate_spoolman_errors():
+        await client.get_spool(spool_id)
+    return await list_spool_location_history(db, spoolman_spool_id=spool_id, limit=limit)
+
+
+@router.post("/spools/{spool_id}/move")
+async def move_spoolman_spool(
+    spool_id: int = Path(..., gt=0),
+    data: SpoolMoveRequest = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_UPDATE),
+) -> dict:
+    """Move a Spoolman spool to a storage location (or clear assignment)."""
+    client = await _get_client(db)
+    async with _translate_spoolman_errors():
+        current = await client.get_spool(spool_id)
+    old_mapped = await _enrich_mapped_spool(db, _map_spoolman_spool(current))
+    try:
+        storage_location, _ = await resolve_spoolman_location_string(
+            db,
+            location_id=data.location_id,
+            storage_location=None,
+            fields_set={"location_id"},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    temp = {"storage_location": storage_location}
+    await enrich_spool_dicts_with_location_id(db, [temp])
+    new_id, new_name = snapshot_location_state(temp.get("location_id"), temp.get("storage_location"))
+    old_id, old_name = snapshot_location_state(old_mapped.get("location_id"), old_mapped.get("storage_location"))
+    if old_id == new_id and (old_name or "").lower() == (new_name or "").lower():
+        return old_mapped
+
+    filament_id = (current.get("filament") or {}).get("id")
+    if not filament_id:
+        raise HTTPException(status_code=500, detail="Spoolman spool has no filament id")
+
+    async with _translate_spoolman_errors():
+        updated = await client.update_spool_full(
+            spool_id=spool_id,
+            filament_id=filament_id,
+            remaining_weight=current.get("remaining_weight") or 0,
+            comment=current.get("comment") or "",
+            location=storage_location,
+            clear_location=not storage_location,
+        )
+    await _record_spoolman_location_change(
+        db,
+        spoolman_spool_id=spool_id,
+        old_mapped=old_mapped,
+        new_storage_location=storage_location,
+        source="move",
+        user_id=user.id if user else None,
+    )
+    await db.commit()
+    result = await _enrich_mapped_spool(db, _map_spoolman_spool(updated))
+    await ws_manager.broadcast({"type": "inventory_changed"})
+    return result
+
+
 @router.patch("/spools/{spool_id}")
 async def update_spool(
     *,
     spool_id: int = Path(..., gt=0),
     data: SpoolmanInventoryUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_UPDATE),
+    user: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_UPDATE),
 ) -> dict:
     """Update an existing Spoolman spool, re-linking the filament if metadata changed."""
     client = await _get_client(db)
 
     async with _translate_spoolman_errors():
         current = await client.get_spool(spool_id)
+
+    old_mapped = await _enrich_mapped_spool(db, _map_spoolman_spool(current))
 
     cur_filament: dict = current.get("filament") or {}
     cur_vendor: dict = cur_filament.get("vendor") or {}
@@ -871,8 +993,20 @@ async def update_spool(
         async with _translate_spoolman_errors():
             updated = await client.merge_spool_extra(spool_id, new_extra)
 
+    result = await _enrich_mapped_spool(db, _map_spoolman_spool(updated))
+    if storage_location_changed:
+        await _record_spoolman_location_change(
+            db,
+            spoolman_spool_id=spool_id,
+            old_mapped=old_mapped,
+            new_storage_location=result.get("storage_location"),
+            source="spoolman",
+            user_id=user.id if user else None,
+        )
+        await db.commit()
+
     await ws_manager.broadcast({"type": "inventory_changed"})
-    return _map_spoolman_spool(updated)
+    return result
 
 
 @router.delete("/spools/{spool_id}")
@@ -969,7 +1103,7 @@ class SpoolmanBulkIdsRequest(BaseModel):
 async def bulk_update_spools(
     payload: SpoolmanBulkUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    _: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_UPDATE),
+    user: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_UPDATE),
 ) -> dict:
     """Apply the same partial update to every listed Spoolman spool.
 
@@ -986,7 +1120,7 @@ async def bulk_update_spools(
     errors: list[dict] = []
     for sid in payload.ids:
         try:
-            await update_spool(spool_id=sid, data=payload.update, db=db, _=None)
+            await update_spool(spool_id=sid, data=payload.update, db=db, user=user)
             updated += 1
         except HTTPException as exc:
             errors.append({"id": sid, "status": exc.status_code, "detail": exc.detail})

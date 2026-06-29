@@ -297,8 +297,11 @@ export function BulkEditSpoolsModal({
     return [...fromPresets, ...fromInventory].sort((a, b) => a.label.localeCompare(b.label));
   }, [filamentOptions, availableSlicerFilamentNames]);
   const locationOptions: Option[] = useMemo(
-    () => availableLocations.map((l) => ({ value: String(l.id), label: l.name })),
-    [availableLocations],
+    () => [
+      { value: '__clear__', label: t('inventory.storageLocationNone') },
+      ...availableLocations.map((l) => ({ value: String(l.id), label: l.name })),
+    ],
+    [availableLocations, t],
   );
 
   if (!isOpen) return null;
@@ -315,8 +318,8 @@ export function BulkEditSpoolsModal({
     });
   };
 
-  const buildPatch = (): Record<string, string | number> => {
-    const patch: Record<string, string | number> = {};
+  const buildPatch = (): Record<string, string | number | null> => {
+    const patch: Record<string, string | number | null> = {};
     for (const f of FIELDS) {
       const raw = values[f.id];
       if (raw === undefined) continue;
@@ -326,8 +329,12 @@ export function BulkEditSpoolsModal({
         const n = Number(trimmed);
         if (Number.isFinite(n)) patch[f.id] = n;
       } else if (f.id === 'location_id') {
-        const n = Number(trimmed);
-        if (Number.isFinite(n) && n > 0) patch[f.id] = n;
+        if (trimmed === '__clear__') {
+          patch[f.id] = null;
+        } else {
+          const n = Number(trimmed);
+          if (Number.isFinite(n) && n > 0) patch[f.id] = n;
+        }
       } else if (f.id === 'rgba') {
         const hex = String(trimmed).replace(/^#/, '');
         const normalized = hex.length === 6 ? `${hex}FF` : hex;

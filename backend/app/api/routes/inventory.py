@@ -29,6 +29,7 @@ from backend.app.models.spool_catalog import SpoolCatalogEntry
 from backend.app.models.spool_k_profile import SpoolKProfile
 from backend.app.models.user import User
 from backend.app.schemas.location import LocationCreate, LocationResponse, LocationUpdate
+from backend.app.schemas.location_history import SpoolLocationHistoryResponse, SpoolMoveRequest
 from backend.app.schemas.spool import (
     SpoolAssignmentCreate,
     SpoolAssignmentResponse,
@@ -48,9 +49,14 @@ from backend.app.services.location_service import (
     count_internal_spools_at_location,
     get_location_by_id,
     get_location_by_name,
+    list_location_moves,
+    list_spool_location_history,
     location_name_key,
+    maybe_record_internal_spool_location_change,
     prepare_internal_spool_payload,
+    record_location_change_if_needed,
     rename_location as rename_location_record,
+    snapshot_location_state,
 )
 from backend.app.services.slicer_filament_resolver import resolve_slicer_filament
 from backend.app.services.spool_csv import (
@@ -700,6 +706,83 @@ async def delete_location(
     return {"status": "deleted"}
 
 
+@router.get("/locations/{location_id}/moves", response_model=list[SpoolLocationHistoryResponse])
+async def get_location_moves(
+    location_id: int,
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_READ),
+):
+    """Recent spool moves to or from a storage location."""
+    location = await get_location_by_id(db, location_id)
+    if not location:
+        raise HTTPException(status_code=404, detail="Location not found")
+    return await list_location_moves(db, location_id, limit=limit)
+
+
+@router.get("/spools/{spool_id}/location-history", response_model=list[SpoolLocationHistoryResponse])
+async def get_spool_location_history(
+    spool_id: int,
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_READ),
+):
+    """Location change history for an internal inventory spool."""
+    result = await db.execute(select(Spool).where(Spool.id == spool_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Spool not found")
+    return await list_spool_location_history(db, spool_id=spool_id, limit=limit)
+
+
+@router.post("/spools/{spool_id}/move", response_model=SpoolResponse)
+async def move_spool(
+    spool_id: int,
+    data: SpoolMoveRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_UPDATE),
+):
+    """Move a spool to a storage location (or clear assignment)."""
+    result = await db.execute(select(Spool).where(Spool.id == spool_id))
+    spool = result.scalar_one_or_none()
+    if not spool:
+        raise HTTPException(status_code=404, detail="Spool not found")
+
+    old_id, old_name = snapshot_location_state(spool.location_id, spool.storage_location)
+    try:
+        prepared = await prepare_internal_spool_payload(
+            db,
+            {"location_id": data.location_id},
+            {"location_id"},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    new_id, new_name = snapshot_location_state(
+        prepared.get("location_id"),
+        prepared.get("storage_location"),
+    )
+    if old_id == new_id and (old_name or "").lower() == (new_name or "").lower():
+        result = await db.execute(select(Spool).options(selectinload(Spool.k_profiles)).where(Spool.id == spool_id))
+        return result.scalar_one()
+
+    await record_location_change_if_needed(
+        db,
+        spool_id=spool.id,
+        old_location_id=old_id,
+        old_name=old_name,
+        new_location_id=new_id,
+        new_name=new_name,
+        source="move",
+        user_id=user.id if user else None,
+    )
+    spool.location_id = prepared.get("location_id")
+    spool.storage_location = prepared.get("storage_location")
+    await db.commit()
+    result = await db.execute(select(Spool).options(selectinload(Spool.k_profiles)).where(Spool.id == spool_id))
+    await ws_manager.broadcast({"type": "inventory_changed"})
+    return result.scalar_one()
+
+
 # ── Color Catalog CRUD ─────────────────────────────────────────────────────
 
 
@@ -1242,15 +1325,30 @@ async def get_spool(
 async def create_spool(
     spool_data: SpoolCreate,
     db: AsyncSession = Depends(get_db),
-    _: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_UPDATE),
+    user: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_UPDATE),
 ):
     """Create a new spool."""
+    fields_set = set(spool_data.model_fields_set)
     try:
-        payload = await prepare_internal_spool_payload(db, spool_data.model_dump(), set(spool_data.model_fields_set))
+        payload = await prepare_internal_spool_payload(db, spool_data.model_dump(), fields_set)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     spool = Spool(**payload)
     db.add(spool)
+    await db.flush()
+    if "location_id" in fields_set or "storage_location" in fields_set:
+        new_id, new_name = snapshot_location_state(payload.get("location_id"), payload.get("storage_location"))
+        if new_id is not None or new_name:
+            await record_location_change_if_needed(
+                db,
+                spool_id=spool.id,
+                old_location_id=None,
+                old_name=None,
+                new_location_id=new_id,
+                new_name=new_name,
+                source="edit",
+                user_id=user.id if user else None,
+            )
     await db.commit()
     await db.refresh(spool)
     result = await db.execute(select(Spool).options(selectinload(Spool.k_profiles)).where(Spool.id == spool.id))
@@ -1287,7 +1385,7 @@ async def update_spool(
     spool_id: int,
     spool_data: SpoolUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_UPDATE),
+    user: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_UPDATE),
 ):
     """Update a spool."""
     result = await db.execute(select(Spool).where(Spool.id == spool_id))
@@ -1296,10 +1394,19 @@ async def update_spool(
         raise HTTPException(404, "Spool not found")
 
     update_data = spool_data.model_dump(exclude_unset=True)
+    fields_set = set(spool_data.model_fields_set)
     try:
-        update_data = await prepare_internal_spool_payload(db, update_data, set(spool_data.model_fields_set))
+        update_data = await prepare_internal_spool_payload(db, update_data, fields_set)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await maybe_record_internal_spool_location_change(
+        db,
+        spool,
+        update_data,
+        fields_set,
+        source="edit",
+        user_id=user.id if user else None,
+    )
     # Auto-lock weight when user explicitly sets weight_used
     if "weight_used" in update_data and "weight_locked" not in update_data:
         update_data["weight_locked"] = True
@@ -1444,7 +1551,7 @@ class BulkIdsRequest(BaseModel):
 async def bulk_update_spools(
     payload: BulkUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    _: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_UPDATE),
+    user: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_UPDATE),
 ):
     """Apply the same partial update to every listed spool.
 
@@ -1470,6 +1577,14 @@ async def bulk_update_spools(
     not_found = [sid for sid in payload.ids if sid not in spools]
     updated_ids: list[int] = []
     for sid, spool in spools.items():
+        await maybe_record_internal_spool_location_change(
+            db,
+            spool,
+            prepared,
+            fields_set,
+            source="bulk",
+            user_id=user.id if user else None,
+        )
         for field, value in prepared.items():
             setattr(spool, field, value)
         updated_ids.append(sid)

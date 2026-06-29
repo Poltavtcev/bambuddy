@@ -144,6 +144,7 @@ async def test_engine():
         spool_assignment,
         spool_catalog,
         spool_k_profile,
+        spool_location_history,
         spool_usage_history,
         spoolbuddy_device,
         spoolman_k_profile,
